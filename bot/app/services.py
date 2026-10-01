@@ -250,6 +250,28 @@ async def collect_stats() -> dict:
     return out
 
 
+async def traffic_top(days: int, limit: int) -> dict:
+    """Кто сколько потратил трафика за последние days суток (по данным нод Remnawave)."""
+    today = utcnow().date()
+    start, end = (today - timedelta(days=days - 1)).isoformat(), today.isoformat()
+    nodes = [n for n in await panel.nodes_usage(start, end) if n.get("total")]
+    users = await panel.top_users([n["uuid"] for n in nodes], start, end, limit) if nodes else []
+    ids = [int(u["username"][3:]) for u in users
+           if u["username"].startswith("tg_") and u["username"][3:].isdigit()]
+    async with Session() as s:
+        known = {u.tg_id: u for u in (await s.execute(select(User).where(User.tg_id.in_(ids)))).scalars()} \
+            if ids else {}
+    for u in users:
+        name = u["username"]
+        tg_id = int(name[3:]) if name.startswith("tg_") and name[3:].isdigit() else None
+        db_user = known.get(tg_id)
+        u["tg_id"] = tg_id
+        u["tg_username"] = db_user.username if db_user else None
+        u["expire_at"] = db_user.expire_at if db_user else None
+    return {"days": days, "start": start, "end": end, "nodes": nodes, "users": users,
+            "total": sum(n["total"] for n in nodes)}
+
+
 # ---------- Telegram Stars: запись оплаты и сверка ----------
 
 async def record_stars_payment(bot: Bot, tg_id: int, payload: str, amount: int, charge_id: str) -> str:

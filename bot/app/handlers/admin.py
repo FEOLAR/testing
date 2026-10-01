@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from html import escape
 
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramRetryAfter
@@ -11,8 +12,8 @@ from sqlalchemy import select
 
 from ..config import settings
 from ..db import Payment, Session, User
-from ..remnawave import panel
-from ..services import admin_give, collect_stats, reconcile_stars, refresh_from_panel, safe_send
+from ..remnawave import PanelError, panel
+from ..services import admin_give, collect_stats, reconcile_stars, refresh_from_panel, safe_send, traffic_top
 from ..texts import fmt_date
 
 router = Router()
@@ -22,6 +23,7 @@ log = logging.getLogger(__name__)
 HELP = (
     "🛠 <b>Админка</b>\n\n"
     "/stats — статистика\n"
+    "/top [дни] [кол-во] — кто больше всех тратит трафик (по умолчанию 30 дн., топ-20)\n"
     "/user &lt;tg_id&gt; — инфо о пользователе\n"
     "/give &lt;tg_id&gt; &lt;дни&gt; — выдать/продлить подписку\n"
     "/ban &lt;tg_id&gt; · /unban &lt;tg_id&gt; — отключить/включить VPN\n"
@@ -52,6 +54,47 @@ async def stats(message: Message):
         f"Оплаты за 24ч: {fmt(st['day'])}\n"
         f"Оплаты за 30д: {fmt(st['month'])}"
     )
+
+
+def fmt_bytes(b: float) -> str:
+    gb = b / 1024**3
+    return f"{gb / 1024:.2f} ТБ" if gb >= 1024 else f"{gb:.1f} ГБ"
+
+
+@router.message(Command("top"))
+async def top(message: Message, command: CommandObject):
+    args = (command.args or "").split()
+    if not all(a.isdigit() for a in args) or len(args) > 2:
+        return await message.answer("Формат: /top [дни] [кол-во], например /top 7 30")
+    days = min(max(int(args[0]), 1), 90) if args else 30
+    limit = min(max(int(args[1]), 1), 50) if len(args) > 1 else 20
+    try:
+        t = await traffic_top(days, limit)
+    except PanelError as e:
+        if "-> 403" in str(e):
+            return await message.answer("Панель не дала доступ к статистике трафика. В Remnawave → API-токены "
+                                        "создай токен с правами на bandwidth-stats (или «*») и пропиши его "
+                                        "в PANEL_TOKEN в .env бота.")
+        raise
+    if not t["nodes"]:
+        return await message.answer(f"За {days} дн. трафика на нодах нет.")
+    lines = [f"📶 <b>Трафик за {days} дн.</b> ({t['start']} — {t['end']}, UTC)\n", "<b>Ноды:</b>"]
+    for n in t["nodes"]:
+        per_day = n["total"] / days
+        lines.append(f"• {escape(n['name'])} — {fmt_bytes(n['total'])} "
+                     f"(≈{fmt_bytes(per_day)}/сут → ~{fmt_bytes(per_day * 30)} за 30 дн.)")
+    lines.append(f"Всего: <b>{fmt_bytes(t['total'])}</b>\n")
+    lines.append(f"<b>Топ-{len(t['users'])} пользователей:</b>")
+    for i, u in enumerate(t["users"], 1):
+        who = f"@{u['tg_username']} " if u["tg_username"] else ""
+        who += f"<code>{u['tg_id']}</code>" if u["tg_id"] else escape(u["username"])
+        share = u["total"] * 100 / t["total"] if t["total"] else 0
+        until = f" · до {fmt_date(u['expire_at'])[:5]}" if u["expire_at"] else ""
+        lines.append(f"{i}. {who} — {fmt_bytes(u['total'])} · {share:.1f}%{until}")
+    top10 = sum(u["total"] for u in t["users"][:10])
+    if t["total"] and len(t["users"]) >= 10:
+        lines.append(f"\nТоп-10 = {top10 * 100 / t['total']:.0f}% всего трафика. Подробнее: /user &lt;id&gt;")
+    await message.answer("\n".join(lines))
 
 
 def _parse_id(command: CommandObject) -> int | None:

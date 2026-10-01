@@ -128,6 +128,20 @@ class Remnawave:
     async def set_enabled(self, username: str, enabled: bool) -> dict:
         return await self.update_user(username, status="ACTIVE" if enabled else "DISABLED")
 
+    # --- статистика трафика (даты YYYY-MM-DD, включительно, UTC) ---
+    async def nodes_usage(self, start: str, end: str) -> list[dict]:
+        """Трафик по нодам за период: [{uuid, name, countryCode, total}], total — байты."""
+        data = await self._req("GET", "/api/bandwidth-stats/nodes",
+                               params={"start": start, "end": end, "topNodesLimit": 100}) or {}
+        return data.get("topNodes", [])
+
+    async def top_users(self, node_uuids: list[str], start: str, end: str, limit: int) -> list[dict]:
+        """Самые «тяжёлые» пользователи на нодах за период: [{username, total}], total — байты."""
+        data = await self._req("POST", "/api/bandwidth-stats/nodes/users",
+                               params={"start": start, "end": end, "topUsersLimit": limit},
+                               json={"nodesUuids": node_uuids}) or {}
+        return data.get("topUsers", [])
+
     # --- squads ---
     async def all_squad_uuids(self) -> list[str]:
         data = await self._req("GET", "/api/internal-squads") or {}
