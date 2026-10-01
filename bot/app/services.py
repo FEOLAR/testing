@@ -256,19 +256,20 @@ async def record_stars_payment(bot: Bot, tg_id: int, payload: str, amount: int, 
     """Записывает Stars-оплату и выдаёт дни. Идемпотентно по charge_id.
     Возвращает: granted | duplicate | unknown_plan | grant_error."""
     from sqlalchemy.dialects.postgresql import insert
-    plan = settings.plan(payload.split(":", 1)[1]) if payload.startswith("vpn:") else None
-    if plan is None:
-        await notify_admins(bot, f"⚠️ Stars-оплата с неизвестным тарифом: {payload}, user {tg_id}, "
-                                 f"charge {charge_id}. Выдай дни вручную: /give {tg_id} <дни>")
-        return "unknown_plan"
+    code = payload.split(":", 1)[1] if payload.startswith("vpn:") else ""
+    plan = settings.plan(code) if code else None
+    values = dict(tg_id=tg_id, method="stars", amount=f"{amount} XTR", external_id=charge_id)
+    if plan:
+        values.update(plan_code=plan.code, days=plan.days)
+    else:  # записываем, чтобы сверка не находила эту оплату снова каждые 10 минут
+        values.update(plan_code=(code or "?")[:16], days=0, status="unknown_plan")
     async with Session() as s:
         if not await s.get(User, tg_id):
             s.add(User(tg_id=tg_id))
             await s.commit()
         res = await s.execute(
             insert(Payment)
-            .values(tg_id=tg_id, plan_code=plan.code, days=plan.days, method="stars",
-                    amount=f"{amount} XTR", external_id=charge_id)
+            .values(**values)
             .on_conflict_do_nothing(index_elements=["method", "external_id"])
             .returning(Payment.id)
         )
@@ -276,6 +277,10 @@ async def record_stars_payment(bot: Bot, tg_id: int, payload: str, amount: int, 
         payment_id = res.scalar_one_or_none()
     if not payment_id:
         return "duplicate"
+    if plan is None:
+        await notify_admins(bot, f"⚠️ Stars-оплата #{payment_id} с неизвестным тарифом: {payload}, user {tg_id}, "
+                                 f"charge {charge_id}. Выдай дни вручную: /give {tg_id} <дни>")
+        return "unknown_plan"
     return "granted" if await process_payment(bot, payment_id) else "grant_error"
 
 

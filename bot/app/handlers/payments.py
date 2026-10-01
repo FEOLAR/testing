@@ -87,6 +87,8 @@ async def check_crypto(cb: CallbackQuery):
         return await cb.answer("Счёт не найден", show_alert=True)
     if payment.status == "paid":
         return await cb.answer("✅ Уже оплачено — подписка активна", show_alert=True)
+    if payment.status in ("processing", "grant_error"):  # деньги пришли, панель ещё не выдала дни
+        return await cb.answer("✅ Оплата получена, подписка активируется в течение пары минут.", show_alert=True)
     if payment.status != "pending":
         return await cb.answer("Счёт истёк. Создай новый.", show_alert=True)
     try:
