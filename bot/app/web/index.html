@@ -1,0 +1,603 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>VPN</title>
+<script src="tg.js"></script>
+<style>
+:root{
+  --bg:#0a0c16; --bg2:#0f1222; --card:#141830; --card2:#1a1f3b; --line:rgba(255,255,255,.08);
+  --text:#eef0f8; --muted:#8d93ad; --dim:#5f6682;
+  --accent:#7c5cff; --accent2:#22d3ee; --grad:linear-gradient(135deg,#7c5cff 0%,#22d3ee 100%);
+  --ok:#34d399; --warn:#fbbf24; --bad:#f87171;
+  --r:18px; --nav:72px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,system-ui,sans-serif}
+body{min-height:100vh;padding-bottom:calc(var(--nav) + env(safe-area-inset-bottom) + 12px);
+  background:radial-gradient(900px 500px at 110% -10%,rgba(124,92,255,.18),transparent 60%),
+             radial-gradient(700px 400px at -20% 10%,rgba(34,211,238,.10),transparent 60%),var(--bg);background-attachment:fixed}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+input{font:inherit;color:var(--text)}
+.wrap{max-width:560px;margin:0 auto;padding:14px 16px 0}
+header{display:flex;align-items:center;gap:10px;padding:4px 0 14px}
+.logo{width:34px;height:34px;border-radius:11px;background:var(--grad);display:grid;place-items:center;box-shadow:0 6px 20px rgba(124,92,255,.35)}
+.brand{font-weight:800;font-size:19px;letter-spacing:.2px;flex:1;background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.icon-btn{width:40px;height:40px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.03);display:grid;place-items:center}
+.icon-btn:active{transform:scale(.96)}
+svg{display:block}
+.card{background:linear-gradient(180deg,var(--card),var(--bg2));border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-bottom:14px}
+.h2{font-size:20px;font-weight:800;margin:4px 0 12px}
+.h3{font-size:16px;font-weight:700;margin:0 0 4px}
+.muted{color:var(--muted)} .small{font-size:13px}
+.row{display:flex;align-items:center;gap:12px}
+.avatar{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:18px;background:var(--card2);border:1px solid var(--line);flex:none}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+.tile{border-radius:14px;padding:11px 12px;border:1px solid var(--line);background:rgba(255,255,255,.025);min-width:0}
+.tile .k{display:flex;gap:6px;align-items:center;color:var(--muted);font-size:12.5px}
+.tile .v{font-weight:700;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile.ok{border-color:rgba(52,211,153,.35);background:rgba(52,211,153,.06)}
+.tile.bad{border-color:rgba(248,113,113,.35);background:rgba(248,113,113,.06)}
+.tile.warn{border-color:rgba(251,191,36,.35);background:rgba(251,191,36,.06)}
+.tile.acc{border-color:rgba(124,92,255,.35);background:rgba(124,92,255,.07)}
+.bar{height:6px;border-radius:6px;background:rgba(255,255,255,.07);margin-top:8px;overflow:hidden}
+.bar>i{display:block;height:100%;background:var(--grad);border-radius:6px}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:14px 16px;border-radius:14px;font-weight:700;background:var(--grad);color:#fff;box-shadow:0 8px 24px rgba(124,92,255,.25)}
+.btn.sec{background:rgba(255,255,255,.05);border:1px solid var(--line);box-shadow:none;color:var(--text)}
+.btn.danger{background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);color:var(--bad);box-shadow:none}
+.btn.sm{width:auto;padding:10px 14px;font-size:14px;border-radius:12px;white-space:nowrap}
+.btn:disabled{opacity:.5}
+.btn:active{transform:scale(.985)}
+.btns{display:flex;gap:10px;margin-top:12px}
+.btns>.btn{flex:1}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;font-size:12.5px;font-weight:700;border:1px solid var(--line)}
+.pill.ok{color:var(--ok);border-color:rgba(52,211,153,.35);background:rgba(52,211,153,.08)}
+.pill.bad{color:var(--bad);border-color:rgba(248,113,113,.35);background:rgba(248,113,113,.08)}
+.pill.warn{color:var(--warn);border-color:rgba(251,191,36,.35);background:rgba(251,191,36,.08)}
+.status-line{font-size:13px;font-weight:600;margin-top:2px}
+.sec-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:4px 0 12px}
+select{appearance:none;-webkit-appearance:none;background:rgba(255,255,255,.04) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%238d93ad' stroke-width='2'%3E%3Cpath d='M3 4.5l3 3 3-3'/%3E%3C/svg%3E") no-repeat right 12px center;border:1px solid var(--line);color:var(--text);border-radius:12px;padding:9px 34px 9px 12px;font:inherit;font-weight:600}
+.apps{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.app{position:relative;text-align:left;padding:14px;border-radius:14px;border:1px solid var(--line);background:rgba(255,255,255,.03);font-weight:700}
+.app.on{border-color:transparent;background:linear-gradient(var(--card2),var(--card2)) padding-box,var(--grad) border-box;border:1.5px solid transparent}
+.app .tag{display:block;font-size:11.5px;font-weight:600;color:var(--accent2);margin-top:2px}
+.steps{margin-top:14px;display:grid;gap:10px}
+.step{display:flex;gap:12px;padding:14px;border-radius:16px;border:1px solid var(--line);background:rgba(255,255,255,.02)}
+.num{flex:none;width:34px;height:34px;border-radius:11px;display:grid;place-items:center;background:rgba(124,92,255,.14);color:#b9a8ff;font-weight:800}
+.step .btn{margin-top:10px;width:auto;display:inline-flex}
+details{border-top:1px solid var(--line);padding-top:12px;margin-top:12px}
+details:first-of-type{border-top:0;margin-top:0;padding-top:0}
+summary{list-style:none;cursor:pointer;font-weight:700;display:flex;justify-content:space-between;align-items:center}
+summary::-webkit-details-marker{display:none}
+summary:after{content:"＋";color:var(--muted);font-weight:400}
+details[open] summary:after{content:"－"}
+details ol,details ul{padding-left:20px;margin:10px 0 0;color:#cfd3e4}
+details li{margin:6px 0}
+.plans{display:grid;gap:10px}
+.plan{display:flex;align-items:center;gap:12px;text-align:left;padding:15px;border-radius:16px;border:1px solid var(--line);background:rgba(255,255,255,.03)}
+.plan.on{background:linear-gradient(var(--card2),var(--card2)) padding-box,var(--grad) border-box;border:1.5px solid transparent}
+.radio{width:20px;height:20px;border-radius:50%;border:2px solid var(--dim);flex:none;display:grid;place-items:center}
+.plan.on .radio{border-color:var(--accent2)}
+.plan.on .radio:after{content:"";width:10px;height:10px;border-radius:50%;background:var(--accent2)}
+.plan .t{flex:1;min-width:0}
+.plan .p{text-align:right;font-weight:800}
+.save{font-size:11.5px;font-weight:800;color:#0a0c16;background:var(--ok);border-radius:6px;padding:1px 6px;margin-left:6px}
+.dev{display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line)}
+.dev:first-child{border-top:0;padding-top:0}
+.dev .ic{width:40px;height:40px;border-radius:12px;background:rgba(34,211,238,.1);display:grid;place-items:center;flex:none}
+.dev .t{flex:1;min-width:0}
+.dev .t div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.linkbox{display:flex;gap:8px;align-items:center;padding:10px 12px;border-radius:12px;background:rgba(255,255,255,.04);border:1px dashed rgba(255,255,255,.14);font:13px ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-all}
+.linkbox span{flex:1}
+.stat3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.big{font-size:22px;font-weight:800}
+.field{display:flex;gap:8px;margin-top:10px}
+.field input{flex:1;min-width:0;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.04);outline:none}
+.field input:focus{border-color:rgba(124,92,255,.6)}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.chip{padding:8px 12px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.04);font-weight:700;font-size:14px}
+.list-row{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-top:1px solid var(--line);font-size:14px}
+.list-row:first-child{border-top:0}
+nav{position:fixed;left:0;right:0;bottom:0;z-index:5;padding:8px 10px calc(8px + env(safe-area-inset-bottom));background:rgba(10,12,22,.86);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-top:1px solid var(--line)}
+nav .in{max-width:560px;margin:0 auto;display:flex;justify-content:space-around}
+nav button{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 0;color:var(--dim);font-size:11.5px;font-weight:600}
+nav button.on{color:var(--text)}
+nav button.on svg{stroke:url(#g)}
+.toast{position:fixed;left:50%;top:14px;transform:translate(-50%,-140%);transition:transform .25s;z-index:10;background:#1d2342;border:1px solid var(--line);padding:11px 16px;border-radius:12px;font-weight:600;box-shadow:0 10px 30px rgba(0,0,0,.4);max-width:92vw}
+.toast.show{transform:translate(-50%,0)}
+.center{text-align:center}
+.skel{height:120px;border-radius:var(--r);background:linear-gradient(90deg,var(--card) 0%,var(--card2) 50%,var(--card) 100%);background-size:200% 100%;animation:sk 1.2s infinite;margin-bottom:14px}
+@keyframes sk{to{background-position:-200% 0}}
+.hide{display:none!important}
+.notice{padding:12px 14px;border-radius:14px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);color:#fde68a;font-size:14px;margin-bottom:14px}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7c5cff"/><stop offset="1" stop-color="#22d3ee"/></linearGradient></defs></svg>
+<div class="wrap">
+  <header>
+    <div class="logo"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6l7-3z"/><path d="M9 12l2 2 4-4"/></svg></div>
+    <div class="brand" id="brand">VPN</div>
+    <button class="icon-btn" id="hdrCopy" title="Скопировать ссылку-подписку"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#cfd3e4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 007.5.5l3-3a5 5 0 00-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 00-7.5-.5l-3 3a5 5 0 007 7l1.7-1.7"/></svg></button>
+    <button class="icon-btn" id="hdrSupport" title="Поддержка"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#cfd3e4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg></button>
+  </header>
+  <main id="view"><div class="skel"></div><div class="skel" style="height:260px"></div></main>
+</div>
+<nav><div class="in" id="nav"></div></nav>
+<div class="toast" id="toast"></div>
+
+<script>
+(() => {
+const tg = window.Telegram && Telegram.WebApp;
+const $ = s => document.querySelector(s);
+const view = $('#view');
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const BASE = location.pathname.replace(/[^/]*$/, '');
+let S = {tab: 'home', me: null, devices: null, platform: null, app: null, plan: null, admin: null, adminUser: null, pending: null};
+
+if (tg) { tg.ready(); tg.expand(); try { tg.setHeaderColor('#0a0c16'); tg.setBackgroundColor('#0a0c16'); tg.setBottomBarColor && tg.setBottomBarColor('#0a0c16'); } catch (e) {} }
+
+function haptic(t = 'light') { try { tg.HapticFeedback.impactOccurred(t); } catch (e) {} }
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 2400); }
+
+async function api(path, body) {
+  const r = await fetch(BASE + 'api/' + path, {
+    method: body ? 'POST' : 'GET',
+    headers: {'Authorization': 'tma ' + (tg ? tg.initData : ''), 'Content-Type': 'application/json'},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  let data = {};
+  try { data = await r.json(); } catch (e) {}
+  if (!r.ok) throw new Error(data.error || ('Ошибка ' + r.status));
+  return data;
+}
+
+// ---------- форматирование ----------
+const MONTHS = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+function fmtDate(iso, time) { if (!iso) return '—'; const d = new Date(iso); let s = d.getDate() + ' ' + MONTHS[d.getMonth()] + (d.getFullYear() !== new Date().getFullYear() ? ' ' + d.getFullYear() : ''); if (time) s += ', ' + String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0'); return s; }
+function plural(n, a, b, c) { n = Math.abs(n) % 100; const n1 = n % 10; if (n > 10 && n < 20) return c; if (n1 > 1 && n1 < 5) return b; if (n1 === 1) return a; return c; }
+function left(iso) {
+  const ms = new Date(iso) - Date.now(); if (ms <= 0) return null;
+  const h = ms / 36e5, d = Math.ceil(h / 24 - 0.05);
+  if (h >= 24) return d + ' ' + plural(d, 'день', 'дня', 'дней');
+  const hh = Math.max(1, Math.floor(h)); return hh + ' ' + plural(hh, 'час', 'часа', 'часов');
+}
+function bytes(b) { if (!b) return '0 ГБ'; const g = b / 1024 ** 3; return g >= 100 ? g.toFixed(0) + ' ГБ' : g >= 1 ? g.toFixed(1) + ' ГБ' : (b / 1024 ** 2).toFixed(0) + ' МБ'; }
+
+// ---------- иконки ----------
+const I = {
+  home: '<path d="M3 11l9-7 9 7v9a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1z"/>',
+  card: '<rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19M6.5 15h4"/>',
+  dev: '<rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M11 18h2"/>',
+  gift: '<rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13M5 12v8a1 1 0 001 1h12a1 1 0 001-1v-8M12 8S10.5 3 8 3.5 7 8 12 8zm0 0s1.5-5 4-4.5S17 8 12 8z"/>',
+  admin: '<path d="M12 3l7 3v5c0 4.5-3 8.3-7 10-4-1.7-7-5.5-7-10V6l7-3z"/><circle cx="12" cy="11" r="2.5"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0116 0"/>',
+  check: '<path d="M20 6L9 17l-5-5"/>',
+  cal: '<rect x="3" y="4.5" width="18" height="17" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/>',
+  swap: '<path d="M7 4v16M7 4L3.5 7.5M7 4l3.5 3.5M17 20V4m0 16l-3.5-3.5M17 20l3.5-3.5"/>',
+  down: '<path d="M12 3v12m0 0l-5-5m5 5l5-5M4 20h16"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  power: '<path d="M12 3v9M6.3 6.3a8 8 0 1011.4 0"/>',
+  copy: '<rect x="8" y="8" width="13" height="13" rx="2.5"/><path d="M16 8V5.5A2.5 2.5 0 0013.5 3h-8A2.5 2.5 0 003 5.5v8A2.5 2.5 0 005.5 16H8"/>',
+  share: '<path d="M4 12v7a2 2 0 002 2h12a2 2 0 002-2v-7M16 6l-4-4-4 4M12 2v14"/>',
+  trash: '<path d="M4 7h16M10 11v6M14 11v6M5 7l1 13a1 1 0 001 1h10a1 1 0 001-1l1-13M9 7V4h6v3"/>',
+  phone: '<rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M11 18h2"/>',
+  pc: '<rect x="2.5" y="4" width="19" height="12.5" rx="2"/><path d="M8 20.5h8M12 16.5v4"/>',
+  star: '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>',
+  coin: '<circle cx="12" cy="12" r="9"/><path d="M9 9.5h4.5a2 2 0 010 4H9m0-4v7m0-3h5a2 2 0 010 4H9M11 7v2m0 7.5V18"/>',
+  alert: '<path d="M12 9v4m0 4h.01M10.3 3.9L2.4 17.5A2 2 0 004.1 20.5h15.8a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/>',
+};
+const ic = (n, s = 18, c = 'currentColor', w = 2) => `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round">${I[n]}</svg>`;
+
+// ---------- приложения ----------
+const DL = {
+  happ: u => 'happ://add/' + u,
+  hiddify: u => 'hiddify://import/' + u + '#' + encodeURIComponent(S.me.brand),
+  streisand: u => 'streisand://import/' + u + '#' + encodeURIComponent(S.me.brand),
+};
+const APPS = {
+  ios: [
+    {id: 'happ', name: 'Happ', rec: true, url: 'https://apps.apple.com/app/happ-proxy-utility/id6504287215'},
+    {id: 'streisand', name: 'Streisand', url: 'https://apps.apple.com/app/streisand/id6450534064'},
+  ],
+  android: [
+    {id: 'happ', name: 'Happ', rec: true, url: 'https://play.google.com/store/apps/details?id=com.happproxy'},
+    {id: 'hiddify', name: 'Hiddify', url: 'https://play.google.com/store/apps/details?id=app.hiddify.com'},
+  ],
+  windows: [
+    {id: 'happ', name: 'Happ', rec: true, url: 'https://github.com/Happ-proxy/happ-desktop/releases'},
+    {id: 'hiddify', name: 'Hiddify', url: 'https://github.com/hiddify/hiddify-app/releases'},
+  ],
+  macos: [
+    {id: 'happ', name: 'Happ', rec: true, url: 'https://apps.apple.com/app/happ-proxy-utility/id6504287215'},
+    {id: 'hiddify', name: 'Hiddify', url: 'https://github.com/hiddify/hiddify-app/releases'},
+  ],
+  linux: [
+    {id: 'happ', name: 'Happ', rec: true, url: 'https://github.com/Happ-proxy/happ-desktop/releases'},
+    {id: 'hiddify', name: 'Hiddify', url: 'https://github.com/hiddify/hiddify-app/releases'},
+  ],
+};
+const PLATFORMS = [['ios','iPhone / iPad'],['android','Android'],['windows','Windows'],['macos','macOS'],['linux','Linux']];
+function detectPlatform() {
+  const p = (tg && tg.platform) || '', ua = navigator.userAgent;
+  if (p === 'ios' || /iPhone|iPad/.test(ua)) return 'ios';
+  if (p === 'android' || /Android/.test(ua)) return 'android';
+  if (p === 'macos' || /Mac OS X/.test(ua)) return 'macos';
+  if (/Linux/.test(ua) && !/Android/.test(ua)) return 'linux';
+  return 'windows';
+}
+
+function openExternal(url) { if (tg && tg.openLink) tg.openLink(url); else window.open(url, '_blank'); }
+function openTg(url) { if (tg && tg.openTelegramLink && /^https:\/\/t\.me\//.test(url)) tg.openTelegramLink(url); else openExternal(url); }
+function openDeeplink(dl) { openExternal(location.origin + BASE + 'go?u=' + encodeURIComponent(dl)); }
+async function copy(text, msg) {
+  try { await navigator.clipboard.writeText(text); }
+  catch (e) { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
+  haptic(); toast(msg || 'Скопировано');
+}
+function confirmBox(text) { return new Promise(res => { if (tg && tg.showConfirm && tg.isVersionAtLeast && tg.isVersionAtLeast('6.2')) tg.showConfirm(text, res); else res(confirm(text)); }); }
+
+// ---------- навигация ----------
+function tabs() {
+  const t = [['home','Подписка','home'],['buy','Тарифы','card'],['devices','Устройства','dev']];
+  if (S.me && S.me.referral) t.push(['ref','Друзья','gift']);
+  if (S.me && S.me.is_admin) t.push(['admin','Админ','admin']);
+  return t;
+}
+function renderNav() {
+  $('#nav').innerHTML = tabs().map(([id, name, icon]) =>
+    `<button data-tab="${id}" class="${S.tab === id ? 'on' : ''}">${ic(icon, 22, 'currentColor', 1.9)}<span>${name}</span></button>`).join('');
+}
+$('#nav').addEventListener('click', e => { const b = e.target.closest('button'); if (b) go(b.dataset.tab); });
+function go(tab) {
+  if (S.tab !== tab) haptic('soft');
+  S.tab = tab; renderNav(); render(); window.scrollTo({top: 0});
+  if (tab === 'devices' && !S.devices) loadDevices();
+  if (tab === 'admin' && !S.admin) loadAdmin();
+}
+function render() {
+  if (!S.me) return;
+  ({home: renderHome, buy: renderBuy, devices: renderDevices, ref: renderRef, admin: renderAdmin}[S.tab] || renderHome)();
+}
+
+// ---------- ПОДПИСКА ----------
+function subState() {
+  const s = S.me.sub;
+  if (!s || s.status === 'NONE') return {key: 'none'};
+  if (s.status === 'DISABLED') return {key: 'disabled', label: 'Отключена', cls: 'bad'};
+  if (s.status === 'LIMITED') return {key: 'limited', label: 'Лимит трафика', cls: 'warn'};
+  if (s.status === 'EXPIRED' || !left(s.expire_at)) return {key: 'expired', label: 'Истекла', cls: 'bad'};
+  const ms = new Date(s.expire_at) - Date.now();
+  return {key: 'active', label: 'Активна', cls: ms < 3 * 864e5 ? 'warn' : 'ok', soon: ms < 3 * 864e5};
+}
+
+function renderHome() {
+  const me = S.me, s = me.sub, st = subState(), name = me.user.first_name || me.user.username || 'Пользователь';
+  let html = '';
+  const initial = esc((name[0] || '?').toUpperCase());
+
+  if (st.key === 'none') {
+    html += `<div class="card">
+      <div class="row"><div class="avatar">${initial}</div><div><div class="h3">${esc(name)}</div><div class="muted small">Подписки пока нет</div></div></div>
+      <p class="muted" style="margin:14px 0 0">Быстрый VPN на всех устройствах: до ${esc(s.device_limit)} устройств, российские сайты и игры работают напрямую, без лишнего пинга.</p>
+      ${me.trial.available ? `<button class="btn" style="margin-top:14px" id="trialBtn">${ic('gift',18,'#fff')} Попробовать ${me.trial.days} ${plural(me.trial.days,'день','дня','дней')} бесплатно</button>` : ''}
+      <button class="btn ${me.trial.available ? 'sec' : ''}" style="margin-top:10px" data-go="buy">${ic('card',18)} Выбрать тариф</button>
+    </div>`;
+  } else {
+    const l = left(s.expire_at);
+    const statusText = st.key === 'active' ? (st.soon ? 'Истекает через ' + l : 'Осталось ' + l)
+      : st.key === 'expired' ? 'Подписка закончилась' : st.key === 'limited' ? 'Трафик на этот месяц закончился' : 'Подписка отключена администратором';
+    const lineColor = st.cls === 'ok' ? 'var(--ok)' : st.cls === 'warn' ? 'var(--warn)' : 'var(--bad)';
+    const limit = s.traffic_limit, used = s.traffic_used;
+    const devCount = S.devices ? S.devices.length : null;
+    html += `<div class="card">
+      <div class="row"><div class="avatar" style="border-color:${lineColor}55">${initial}</div>
+        <div style="min-width:0"><div class="h3" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(name)}</div>
+        <div class="status-line" style="color:${lineColor}">${statusText}</div></div></div>
+      <div class="grid2">
+        <div class="tile ${st.cls}"><div class="k">${ic(st.key === 'active' ? 'check' : 'alert',14)} Статус</div><div class="v">${st.label}</div></div>
+        <div class="tile acc"><div class="k">${ic('cal',14)} ${st.key === 'expired' ? 'Истекла' : 'Действует до'}</div><div class="v">${fmtDate(s.expire_at)}</div></div>
+        <div class="tile"><div class="k">${ic('swap',14)} Трафик</div><div class="v">${bytes(used)} / ${limit ? bytes(limit) : '∞'}</div>
+          ${limit ? `<div class="bar"><i style="width:${Math.min(100, used / limit * 100).toFixed(1)}%"></i></div>` : ''}</div>
+        <div class="tile" data-go="devices" style="cursor:pointer"><div class="k">${ic('dev',14)} Устройства</div><div class="v">${devCount === null ? '…' : devCount} / ${s.device_limit || '∞'}</div></div>
+      </div>
+      ${st.key === 'disabled' ? (me.support ? `<button class="btn sec" style="margin-top:14px" id="supBtn">Написать в поддержку</button>` : '')
+        : st.key !== 'active' || st.soon ? `<button class="btn" style="margin-top:14px" data-go="buy">${ic('card',18,'#fff')} Продлить подписку</button>` : ''}
+    </div>`;
+  }
+
+  if (s && s.sub_url && st.key !== 'none') html += setupBlock();
+
+  html += `<div class="card">
+    <details><summary>🔌 VPN сам отключается</summary>
+      <p class="muted small" style="margin:10px 0 0">Обычно VPN закрывает сам телефон: чтобы освободить память (например, при запуске тяжёлых игр вроде Clash of Clans) или сэкономить батарею. Включи автопереподключение.</p>
+      <p style="margin:12px 0 0;font-weight:700">🍏 iPhone / iPad</p>
+      <ol><li>Настройки → Основные → VPN и управление устройством → VPN → ⓘ у Happ → включи <b>«Подключать по запросу»</b>.</li>
+      <li>Выключи «Режим энергосбережения».</li><li>Оставь в Happ одну подписку — лишние удали.</li>
+      <li>Если отключается часто — выбери сервер с пометкой <b>XHTTP</b>.</li></ol>
+      <p style="margin:12px 0 0;font-weight:700">🤖 Android</p>
+      <ol><li>Настройки → Сеть и интернет → VPN → ⚙️ у Happ → <b>«Постоянный VPN»</b>. «Блокировать соединения без VPN» не включай.</li>
+      <li>Приложения → Happ → Батарея → <b>«Без ограничений»</b>.</li>
+      <li>Xiaomi: «Автозапуск» и «Контроль активности → Нет ограничений», закрепи Happ в недавних. Samsung: Батарея → «Никогда не переходящие в спящий режим». Huawei/Honor: Запуск приложений → Happ → «Управлять вручную».</li></ol>
+    </details>
+    <details><summary>🐢 Медленно или не подключается</summary>
+      <ol><li>Обнови подписку в приложении (потяни список серверов вниз или кнопка ⟳).</li>
+      <li>Попробуй другой сервер из списка — особенно с пометкой XHTTP.</li>
+      <li>Переключись между Wi-Fi и мобильным интернетом.</li>
+      <li>Не помогло — напиши в поддержку, приложи скриншот.</li></ol>
+    </details>
+    <details><summary>📱 Сколько устройств можно подключить</summary>
+      <p class="muted" style="margin:10px 0 0">До ${esc(s.device_limit || '∞')} устройств на одну подписку. Если лимит занят — удали старое устройство во вкладке «Устройства».</p>
+    </details>
+  </div>`;
+  view.innerHTML = html;
+  bindCommon();
+  const tb = $('#trialBtn'); if (tb) tb.onclick = startTrial;
+  const sb = $('#supBtn'); if (sb) sb.onclick = () => openTg('https://t.me/' + me.support);
+  bindSetup();
+  if (!S.devices && st.key !== 'none') loadDevices(true);
+}
+
+function setupBlock() {
+  S.platform = S.platform || detectPlatform();
+  const apps = APPS[S.platform];
+  if (!apps.find(a => a.id === S.app)) S.app = apps[0].id;
+  const app = apps.find(a => a.id === S.app);
+  const pname = PLATFORMS.find(p => p[0] === S.platform)[1];
+  return `<div class="card">
+    <div class="sec-head"><div class="h2" style="margin:0">Установка</div>
+      <select id="platSel">${PLATFORMS.map(([id, n]) => `<option value="${id}" ${id === S.platform ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
+    <div class="apps">${apps.map(a => `<button class="app ${a.id === S.app ? 'on' : ''}" data-app="${a.id}">${a.name}${a.rec ? '<span class="tag">★ Рекомендуем</span>' : '<span class="tag" style="color:var(--dim)">&nbsp;</span>'}</button>`).join('')}</div>
+    <div class="steps">
+      <div class="step"><div class="num">1</div><div><div class="h3">Установи приложение</div>
+        <div class="muted small">Скачай ${esc(app.name)} для ${pname}.${app.id !== 'happ' ? ' Разделение трафика (RU-сайты и игры напрямую) работает только в Happ.' : ''}</div>
+        <button class="btn sec sm" id="instBtn">${ic('down',16)} Скачать ${esc(app.name)}</button></div></div>
+      <div class="step"><div class="num">2</div><div><div class="h3">Добавь подписку</div>
+        <div class="muted small">Нажми кнопку — приложение откроется, и подписка добавится сама. Не сработало — скопируй ссылку и в приложении нажми «+» → «Из буфера».</div>
+        <div class="btns" style="flex-wrap:wrap"><button class="btn sm" id="addBtn">${ic('plus',16,'#fff')} Добавить подписку</button>
+        <button class="btn sec sm" id="copyBtn">${ic('copy',16)} Ссылка</button></div></div></div>
+      <div class="step"><div class="num">3</div><div><div class="h3">Подключись</div>
+        <div class="muted small">В приложении нажми большую кнопку включения. Если один сервер не работает — выбери другой из списка.</div></div></div>
+    </div>
+  </div>`;
+}
+function bindSetup() {
+  const ps = $('#platSel'); if (!ps) return;
+  ps.onchange = () => { S.platform = ps.value; S.app = null; renderHome(); };
+  view.querySelectorAll('[data-app]').forEach(b => b.onclick = () => { S.app = b.dataset.app; haptic(); renderHome(); });
+  const app = APPS[S.platform].find(a => a.id === S.app);
+  $('#instBtn').onclick = () => openExternal(app.url);
+  $('#addBtn').onclick = () => openDeeplink(DL[app.id](S.me.sub.sub_url));
+  $('#copyBtn').onclick = () => copy(S.me.sub.sub_url, 'Ссылка-подписка скопирована');
+}
+function bindCommon() { view.querySelectorAll('[data-go]').forEach(b => b.onclick = () => go(b.dataset.go)); }
+
+async function startTrial() {
+  const b = $('#trialBtn'); b.disabled = true; b.textContent = 'Создаю подписку…';
+  try { await api('trial', {}); haptic('medium'); toast('🎁 Пробный период активирован'); await loadMe(); }
+  catch (e) { toast(e.message); b.disabled = false; }
+}
+
+// ---------- ТАРИФЫ ----------
+function renderBuy() {
+  const me = S.me; S.plan = S.plan || (me.plans[1] || me.plans[0]).code;
+  const p = me.plans.find(x => x.code === S.plan);
+  let html = `<div class="h2">Тарифы</div>
+    <p class="muted" style="margin:-6px 0 14px">Безлимитный трафик · до ${esc(me.sub.device_limit || 3)} устройств · дни добавляются к текущему сроку, ссылка не меняется.</p>
+    <div class="plans">${me.plans.map(x => `<button class="plan ${x.code === S.plan ? 'on' : ''}" data-plan="${x.code}">
+      <div class="radio"></div><div class="t"><div style="font-weight:700">${esc(x.title)}${x.discount ? `<span class="save">−${x.discount}%</span>` : ''}</div>
+      <div class="muted small">${x.per_month} ₽ в месяц</div></div>
+      <div class="p">${x.rub} ₽<div class="muted small" style="font-weight:600">${x.stars} ⭐</div></div></button>`).join('')}</div>
+    <div class="card" style="margin-top:14px">
+      <div class="h3">Оплата: ${esc(p.title)}</div><div class="muted small">Подписка активируется сразу после оплаты.</div>
+      <button class="btn" style="margin-top:12px" id="payStars">${ic('star',18,'#fff')} Telegram Stars — ${p.stars} ⭐</button>
+      ${me.crypto_enabled ? `<button class="btn sec" style="margin-top:10px" id="payCrypto">${ic('coin',18)} Криптовалюта — ${p.rub} ₽</button>` : ''}
+      <p class="muted small center" style="margin:12px 0 0">Звёзды можно купить прямо в Telegram. Крипта — USDT или TON через @CryptoBot.</p>
+    </div>`;
+  if (S.pending) html += `<div class="card" id="pend"><div class="h3">⏳ Ждём оплату в CryptoBot</div>
+    <div class="muted small">Как только оплата пройдёт, подписка продлится автоматически.</div>
+    <div class="btns"><button class="btn sec sm" id="pendOpen">Открыть счёт</button><button class="btn sm" id="pendCheck">Проверить</button></div></div>`;
+  view.innerHTML = html;
+  view.querySelectorAll('[data-plan]').forEach(b => b.onclick = () => { S.plan = b.dataset.plan; haptic(); renderBuy(); });
+  $('#payStars').onclick = payStars;
+  const pc = $('#payCrypto'); if (pc) pc.onclick = payCrypto;
+  if (S.pending) { $('#pendOpen').onclick = () => openTg(S.pending.pay_url); $('#pendCheck').onclick = () => checkPending(true); }
+}
+async function payStars() {
+  const b = $('#payStars'); b.disabled = true;
+  try {
+    const {invoice_link} = await api('pay', {plan: S.plan, method: 'stars'});
+    if (!tg || !tg.openInvoice) { openTg(invoice_link); return; }
+    tg.openInvoice(invoice_link, async status => {
+      if (status === 'paid') { haptic('heavy'); toast('🎉 Оплата прошла!'); await waitRenew(); }
+      else if (status === 'failed') toast('Оплата не прошла');
+    });
+  } catch (e) { toast(e.message); } finally { b.disabled = false; }
+}
+async function payCrypto() {
+  const b = $('#payCrypto'); b.disabled = true;
+  try {
+    S.pending = await api('pay', {plan: S.plan, method: 'crypto'});
+    S.pending.started = Date.now();
+    openTg(S.pending.pay_url); renderBuy(); pollPending();
+  } catch (e) { toast(e.message); b.disabled = false; }
+}
+async function checkPending(manual) {
+  if (!S.pending) return;
+  try {
+    const {status} = await api('payment/' + S.pending.payment_id);
+    if (status === 'paid') { S.pending = null; haptic('heavy'); toast('🎉 Оплата прошла!'); await loadMe(); go('home'); return true; }
+    if (status === 'expired') { S.pending = null; toast('Счёт истёк, создай новый'); if (S.tab === 'buy') renderBuy(); return true; }
+    if (manual) toast('Оплата пока не поступила');
+  } catch (e) { if (manual) toast(e.message); }
+  return false;
+}
+async function pollPending() {
+  while (S.pending && Date.now() - S.pending.started < 15 * 60e3) {
+    await new Promise(r => setTimeout(r, 6000));
+    if (await checkPending(false)) return;
+  }
+}
+async function waitRenew() {
+  const before = S.me.sub.expire_at;
+  for (let i = 0; i < 10; i++) {
+    await new Promise(r => setTimeout(r, 1500));
+    await loadMe(true);
+    if (S.me.sub.expire_at !== before) break;
+  }
+  go('home');
+}
+
+// ---------- УСТРОЙСТВА ----------
+async function loadDevices(silent) {
+  try { S.devices = (await api('devices')).devices; }
+  catch (e) { S.devices = S.devices || []; if (!silent) toast(e.message); }
+  if (S.tab === 'devices' || S.tab === 'home') render();
+}
+function devIcon(p) { p = (p || '').toLowerCase(); return /win|mac|linux|desktop/.test(p) ? 'pc' : 'phone'; }
+function renderDevices() {
+  const lim = S.me.sub.device_limit;
+  let html = `<div class="h2">Устройства</div>`;
+  if (S.devices === null) { view.innerHTML = html + '<div class="skel"></div>'; return; }
+  html += `<div class="card"><div class="row" style="justify-content:space-between"><div>
+      <div class="big">${S.devices.length} <span class="muted" style="font-size:16px;font-weight:600">из ${lim || '∞'}</span></div>
+      <div class="muted small">устройств подключено</div></div>
+      ${S.devices.length ? `<button class="btn danger sm" id="resetAll">${ic('trash',16)} Сбросить все</button>` : ''}</div>
+      ${lim ? `<div class="bar"><i style="width:${Math.min(100, S.devices.length / lim * 100)}%"></i></div>` : ''}</div>`;
+  if (!S.devices.length) {
+    html += `<div class="card center muted">Пока нет устройств.<br>Они появятся здесь после первого подключения через Happ.</div>`;
+  } else {
+    html += `<div class="card">${S.devices.map((d, i) => `<div class="dev"><div class="ic">${ic(devIcon(d.platform),20,'#22d3ee')}</div>
+      <div class="t"><div style="font-weight:700">${esc(d.model || d.platform || 'Устройство')}</div>
+      <div class="muted small">${esc([d.platform, d.os_version].filter(Boolean).join(' ') || '—')} · с ${fmtDate(d.created_at)}</div></div>
+      <button class="icon-btn" data-del="${i}" title="Удалить">${ic('trash',17,'#f87171')}</button></div>`).join('')}</div>`;
+  }
+  html += `<p class="muted small" style="margin:0 4px">Удалённое устройство сможет подключиться снова, если на нём осталась подписка. Чтобы отключить чужое устройство — удали его и больше не передавай ссылку.</p>`;
+  view.innerHTML = html;
+  view.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+    const d = S.devices[+b.dataset.del];
+    if (!await confirmBox(`Удалить «${d.model || d.platform || 'устройство'}»?`)) return;
+    try { S.devices = (await api('devices/delete', {hwid: d.hwid})).devices; haptic(); toast('Устройство удалено'); renderDevices(); } catch (e) { toast(e.message); }
+  });
+  const ra = $('#resetAll'); if (ra) ra.onclick = async () => {
+    if (!await confirmBox('Сбросить все устройства? Подключиться заново можно будет на любых устройствах.')) return;
+    try { S.devices = (await api('devices/delete', {all: true})).devices; haptic(); toast('Устройства сброшены'); renderDevices(); } catch (e) { toast(e.message); }
+  };
+}
+
+// ---------- ДРУЗЬЯ ----------
+function renderRef() {
+  const r = S.me.referral;
+  view.innerHTML = `<div class="h2">Пригласи друга</div>
+    <div class="card" style="background:linear-gradient(135deg,rgba(124,92,255,.22),rgba(34,211,238,.10)),var(--card)">
+      <div class="big">+${r.bonus_days} ${plural(r.bonus_days,'день','дня','дней')}</div>
+      <div class="muted">за каждого друга, который оплатит подписку</div></div>
+    <div class="card"><div class="h3">Твоя ссылка</div>
+      <div class="linkbox" style="margin-top:10px"><span>${esc(r.link)}</span></div>
+      <div class="btns"><button class="btn" id="refShare">${ic('share',17,'#fff')} Поделиться</button><button class="btn sec" id="refCopy">${ic('copy',17)} Копировать</button></div></div>
+    <div class="stat3">
+      <div class="tile"><div class="k">Пришло</div><div class="v big">${r.invited}</div></div>
+      <div class="tile ok"><div class="k">Оплатили</div><div class="v big">${r.paid}</div></div>
+      <div class="tile acc"><div class="k">Бонус</div><div class="v big">${r.paid * r.bonus_days}д</div></div></div>`;
+  $('#refCopy').onclick = () => copy(r.link, 'Ссылка скопирована');
+  $('#refShare').onclick = () => openTg('https://t.me/share/url?url=' + encodeURIComponent(r.link) + '&text=' + encodeURIComponent('Быстрый VPN — российские сайты и игры работают без отключения. Попробуй:'));
+}
+
+// ---------- АДМИН ----------
+async function loadAdmin() {
+  try {
+    const [st, pays] = await Promise.all([api('admin/stats'), api('admin/payments')]);
+    S.admin = {stats: st, payments: pays.payments};
+  } catch (e) { toast(e.message); S.admin = {error: e.message}; }
+  if (S.tab === 'admin') renderAdmin();
+}
+function sumLine(d) {
+  const parts = Object.entries(d || {}).map(([m, v]) => `${m === 'stars' ? '⭐' : '🪙'} ${v.count} · ${v.sum}${m === 'stars' ? ' ⭐' : ' ₽'}`);
+  return parts.join('<br>') || '—';
+}
+function renderAdmin() {
+  let html = `<div class="sec-head"><div class="h2" style="margin:0">Админка</div><button class="btn sec sm" id="admRefresh">Обновить</button></div>`;
+  if (!S.admin) { view.innerHTML = html + '<div class="skel"></div>'; return; }
+  const st = S.admin.stats;
+  if (st) html += `<div class="grid2" style="margin:0 0 14px">
+      <div class="tile acc"><div class="k">Пользователей</div><div class="v big">${st.total}</div><div class="muted small">+${st.new_day} за сутки</div></div>
+      <div class="tile ok"><div class="k">Активных подписок</div><div class="v big">${st.active}</div><div class="muted small">заблок. бота: ${st.blocked}</div></div>
+      <div class="tile"><div class="k">Оплаты за 24 ч</div><div class="v small" style="white-space:normal">${sumLine(st.day)}</div></div>
+      <div class="tile"><div class="k">Оплаты за 30 дн</div><div class="v small" style="white-space:normal">${sumLine(st.month)}</div></div></div>`;
+  html += `<div class="card"><div class="h3">Найти пользователя</div>
+    <div class="field"><input id="admQ" placeholder="Telegram ID или @username" inputmode="text" autocomplete="off"><button class="btn sm" id="admFind">Найти</button></div>
+    <div id="admUser"></div></div>`;
+  if (S.admin.payments) html += `<div class="card"><div class="h3" style="margin-bottom:8px">Последние оплаты</div>
+    ${S.admin.payments.map(p => `<div class="list-row"><span>${p.method === 'stars' ? '⭐' : '🪙'} ${esc(p.username ? '@' + p.username : p.tg_id)} · ${p.days} дн</span><span class="muted">${esc(p.amount)} · ${fmtDate(p.paid_at, true).replace(/ \d{4}/, '')}</span></div>`).join('') || '<div class="muted">Пока нет</div>'}</div>`;
+  view.innerHTML = html;
+  $('#admRefresh').onclick = () => { S.admin = null; renderAdmin(); loadAdmin(); };
+  $('#admFind').onclick = adminFind;
+  $('#admQ').onkeydown = e => { if (e.key === 'Enter') adminFind(); };
+  if (S.adminUser) { $('#admQ').value = S.adminUser.tg_id; renderAdminUser(); }
+}
+async function adminFind() {
+  const q = $('#admQ').value.trim(); if (!q) return;
+  try { S.adminUser = await api('admin/user?q=' + encodeURIComponent(q)); renderAdminUser(); }
+  catch (e) { S.adminUser = null; $('#admUser').innerHTML = `<p class="muted" style="margin:12px 0 0">${esc(e.message)}</p>`; }
+}
+function renderAdminUser() {
+  const u = S.adminUser, s = u.sub;
+  const active = s.status === 'ACTIVE' && left(s.expire_at);
+  $('#admUser').innerHTML = `<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">
+    <div class="row"><div class="avatar">${esc(((u.first_name || u.username || '?')[0]).toUpperCase())}</div><div style="min-width:0">
+      <div class="h3">${esc(u.first_name || '—')} ${u.username ? '<span class="muted">@' + esc(u.username) + '</span>' : ''}</div>
+      <div class="muted small">ID <span id="admId">${u.tg_id}</span> · с ${fmtDate(u.created_at)}</div></div></div>
+    <div class="grid2">
+      <div class="tile ${s.status === 'DISABLED' ? 'bad' : active ? 'ok' : 'warn'}"><div class="k">Статус</div><div class="v">${{ACTIVE: active ? 'Активна' : 'Истекла', DISABLED: 'Отключён', LIMITED: 'Лимит', EXPIRED: 'Истекла', NONE: 'Нет подписки'}[s.status] || s.status}</div></div>
+      <div class="tile"><div class="k">До</div><div class="v">${fmtDate(s.expire_at, true)}</div></div>
+      <div class="tile"><div class="k">Трафик</div><div class="v">${bytes(s.traffic_used)}</div></div>
+      <div class="tile"><div class="k">Триал / реферер</div><div class="v">${u.trial_used ? 'да' : 'нет'} / ${u.referrer_id || '—'}</div></div></div>
+    <div class="h3" style="margin-top:14px">Выдать дни</div>
+    <div class="chips">${[3, 7, 30, 90].map(d => `<button class="chip" data-give="${d}">+${d}</button>`).join('')}</div>
+    <div class="field"><input id="admDays" type="number" min="1" max="3650" placeholder="Своё количество дней"><button class="btn sm" id="admGive">Выдать</button></div>
+    <div class="btns">${s.status === 'DISABLED'
+      ? '<button class="btn sec" id="admBan" data-en="1">✅ Включить VPN</button>'
+      : '<button class="btn danger" id="admBan" data-en="0">⛔ Отключить VPN</button>'}</div>
+    ${u.payments.length ? `<div class="h3" style="margin:14px 0 6px">Оплаты</div>${u.payments.map(p => `<div class="list-row"><span>#${p.id} ${esc(p.method)} · ${p.days} дн</span><span class="muted">${esc(p.amount)} · ${fmtDate(p.paid_at)}</span></div>`).join('')}` : ''}
+  </div>`;
+  const give = async days => {
+    if (!(days > 0)) return toast('Укажи количество дней');
+    if (!await confirmBox(`Выдать ${days} дн. пользователю ${u.tg_id}?`)) return;
+    try { await api('admin/give', {tg_id: u.tg_id, days}); haptic('medium'); toast(`✅ Выдано ${days} дн.`); S.adminUser = await api('admin/user?q=' + u.tg_id); renderAdminUser(); } catch (e) { toast(e.message); }
+  };
+  $('#admUser').querySelectorAll('[data-give]').forEach(b => b.onclick = () => give(+b.dataset.give));
+  $('#admGive').onclick = () => give(parseInt($('#admDays').value, 10));
+  $('#admBan').onclick = async e => {
+    const enable = e.currentTarget.dataset.en === '1';
+    if (!await confirmBox(enable ? 'Включить VPN пользователю?' : 'Отключить VPN пользователю?')) return;
+    try { await api('admin/ban', {tg_id: u.tg_id, enable}); toast(enable ? 'Включён' : 'Отключён'); S.adminUser = await api('admin/user?q=' + u.tg_id); renderAdminUser(); } catch (err) { toast(err.message); }
+  };
+}
+
+// ---------- старт ----------
+$('#hdrCopy').onclick = () => { if (S.me && S.me.sub.sub_url) copy(S.me.sub.sub_url, 'Ссылка-подписка скопирована'); else toast('Сначала оформи подписку'); };
+$('#hdrSupport').onclick = () => { if (S.me && S.me.support) openTg('https://t.me/' + S.me.support); };
+
+async function loadMe(quiet) {
+  try {
+    S.me = await api('me');
+    $('#brand').textContent = S.me.brand; document.title = S.me.brand;
+    if (!S.me.support) $('#hdrSupport').classList.add('hide');
+    renderNav(); if (!quiet || S.tab === 'home') render();
+  } catch (e) {
+    if (!S.me) view.innerHTML = `<div class="card center"><div class="h3">Не удалось загрузить</div><p class="muted">${esc(e.message)}</p><button class="btn" id="retry">Повторить</button></div>`;
+    const r = $('#retry'); if (r) r.onclick = () => loadMe();
+  }
+}
+if (!tg || !tg.initData) {
+  view.innerHTML = `<div class="card center"><div class="h3">Открой приложение в Telegram</div><p class="muted">Эта страница работает только внутри бота.</p></div>`;
+} else {
+  loadMe();
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && S.me) { loadMe(true); if (S.pending) checkPending(false); } });
+}
+})();
+</script>
+</body>
+</html>
