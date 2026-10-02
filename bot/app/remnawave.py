@@ -128,6 +128,19 @@ class Remnawave:
     async def set_enabled(self, username: str, enabled: bool) -> dict:
         return await self.update_user(username, status="ACTIVE" if enabled else "DISABLED")
 
+    # --- ноды и хосты ---
+    async def get_nodes(self) -> list[dict]:
+        return await self._req("GET", "/api/nodes") or []
+
+    async def get_hosts(self) -> list[dict]:
+        return await self._req("GET", "/api/hosts") or []
+
+    async def update_host(self, uuid: str, **fields) -> dict:
+        host = await self._req("PATCH", "/api/hosts", json={"uuid": uuid, **fields})
+        if not host:
+            raise PanelError("update_host: host not found")
+        return host
+
     # --- статистика трафика (даты YYYY-MM-DD, включительно, UTC) ---
     async def nodes_usage(self, start: str, end: str) -> list[dict]:
         """Трафик по нодам за период: [{uuid, name, countryCode, total}], total — байты."""

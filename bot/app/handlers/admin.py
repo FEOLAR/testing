@@ -23,6 +23,7 @@ log = logging.getLogger(__name__)
 HELP = (
     "🛠 <b>Админка</b>\n\n"
     "/stats — статистика\n"
+    "/nodes — состояние нод и автораспределение по странам\n"
     "/top [дни] [кол-во] — кто больше всех тратит трафик (по умолчанию 30 дн., топ-20)\n"
     "/user &lt;tg_id&gt; — инфо о пользователе\n"
     "/give &lt;tg_id&gt; &lt;дни&gt; — выдать/продлить подписку\n"
@@ -54,6 +55,16 @@ async def stats(message: Message):
         f"Оплаты за 24ч: {fmt(st['day'])}\n"
         f"Оплаты за 30д: {fmt(st['month'])}"
     )
+
+
+@router.message(Command("nodes"))
+async def nodes(message: Message):
+    from ..balancer import status_text
+    try:
+        text = await status_text()
+    except PanelError as e:
+        return await message.answer(f"Панель не ответила: {escape(str(e)[:300])}")
+    await message.answer(text)
 
 
 def fmt_bytes(b: float) -> str:

@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     panel_squad_uuids: str = ""
     device_limit: int = 3
     traffic_limit_gb: int = 0
+    # Хосты с этим тегом бот сам наполняет адресами исправных нод (см. balancer.py). Пусто — выключено.
+    auto_host_tag: str = "AUTO"
 
     plans: str = "30:199:150,90:549:400,180:999:750,365:1790:1350"
     trial_days: int = 3
