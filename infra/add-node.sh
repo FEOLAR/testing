@@ -95,8 +95,8 @@ for p in 22 80 443 8443 9443; do ufw allow $p/tcp >/dev/null; done
 ufw allow from $PANEL_IP to any port $NODE_PORT proto tcp >/dev/null
 ufw --force enable >/dev/null
 
-(cd /opt/remnanode && docker compose up -d -q)
-(cd /opt/sub-proxy && docker compose up -d -q)
+(cd /opt/remnanode && docker compose up -d)
+(cd /opt/sub-proxy && docker compose up -d)
 echo "== Ждём запуска (30 с)..."
 sleep 30
 
