@@ -52,14 +52,24 @@ async def main() -> None:
     sched = setup_scheduler(bot)
     sched.start()
     web_runner = await start_webapp(bot)
+    polling = [dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())]
+    legacy_bot = None
+    if settings.legacy_bot_token:
+        from .legacy import build_legacy_dispatcher
+        legacy_bot = Bot(settings.legacy_bot_token)
+        legacy_dp = build_legacy_dispatcher((await bot.me()).username)
+        polling.append(legacy_dp.start_polling(legacy_bot, handle_signals=False))
+        log.info("legacy bot @%s redirects to the new one", (await legacy_bot.me()).username)
     try:
-        await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+        await asyncio.gather(*polling)
     finally:
         sched.shutdown(wait=False)
         await web_runner.cleanup()
         await panel.close()
         await crypto.close()
         await bot.session.close()
+        if legacy_bot:
+            await legacy_bot.session.close()
 
 
 if __name__ == "__main__":

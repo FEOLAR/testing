@@ -45,9 +45,15 @@ async def auth_mw(request: web.Request, handler):
     raw = request.headers.get("Authorization", "")
     if not raw.startswith("tma "):
         return err("Открой приложение из Telegram", 401)
-    try:
-        data = safe_parse_webapp_init_data(settings.bot_token, raw[4:])
-    except ValueError:
+    data = None
+    # мини-приложение могут открыть и из старого бота (кнопка меню) — принимаем обе подписи
+    for token in filter(None, (settings.bot_token, settings.legacy_bot_token)):
+        try:
+            data = safe_parse_webapp_init_data(token, raw[4:])
+            break
+        except ValueError:
+            continue
+    if data is None:
         return err("Подпись Telegram не прошла проверку", 401)
     if time.time() - data.auth_date.timestamp() > INIT_DATA_TTL:
         return err("Сессия устарела, открой приложение заново", 401)

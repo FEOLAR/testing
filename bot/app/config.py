@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     bot_token: str
+    # Токен старого бота после переезда: он будет отвечать «мы переехали» (см. legacy.py). Пусто — выключено.
+    legacy_bot_token: str = ""
     admin_ids: str = ""
     support_username: str = ""
     brand_name: str = "VPN"

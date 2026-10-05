@@ -162,7 +162,17 @@ async def refund(message: Message, command: CommandObject):
         p = await s.get(Payment, pid) if pid else None
         if not p or p.method != "stars" or p.status != "paid":
             return await message.answer("Нужен id оплаченного Stars-платежа (см. /user).")
-        await message.bot.refund_star_payment(user_id=p.tg_id, telegram_payment_charge_id=p.external_id)
+        try:
+            await message.bot.refund_star_payment(user_id=p.tg_id, telegram_payment_charge_id=p.external_id)
+        except Exception:
+            if not settings.legacy_bot_token:
+                raise
+            # оплата могла пройти ещё в старом боте — вернуть звёзды может только он
+            old = Bot(settings.legacy_bot_token)
+            try:
+                await old.refund_star_payment(user_id=p.tg_id, telegram_payment_charge_id=p.external_id)
+            finally:
+                await old.session.close()
         p.status = "refunded"
         await s.commit()
     await message.answer(f"↩️ Звёзды по оплате #{pid} возвращены. "
