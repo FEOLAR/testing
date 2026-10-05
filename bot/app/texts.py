@@ -21,12 +21,15 @@ def days_left(dt: datetime | None) -> int:
 
 def welcome(name: str | None) -> str:
     return (
-        f"👋 Привет, {escape(name or 'друг')}!\n\n"
-        f"<b>{escape(settings.brand_name)}</b> — быстрый и стабильный VPN.\n"
-        f"• Работает на телефоне, ПК и планшете — до {settings.device_limit} устройств\n"
-        f"• Несколько серверов в одной подписке\n"
-        f"• Подключение за 1 минуту\n\n"
-        f"Выбери действие 👇"
+        f"🕳 <b>Добро пожаловать в {escape(settings.brand_name)}, {escape(name or 'путник')}!</b>\n\n"
+        "Здесь блокировки исчезают, как свет за горизонтом событий.\n\n"
+        "⚡️ <b>Быстро</b> — серверы в Европе, канал 1 Гбит/с\n"
+        "🛡 <b>Не блокируется</b> — VLESS Reality, трафик выглядит как обычный сайт\n"
+        "🇷🇺 <b>Свои сайты напрямую</b> — банки, Госуслуги и игры работают без выключения VPN\n"
+        f"📱 <b>До {settings.device_limit} устройств</b> — iPhone, Android, Windows, macOS\n\n"
+        + (f"🎁 Первые <b>{settings.trial_days} дня бесплатно</b> — без карты и обязательств.\n\n"
+           if settings.trial_days > 0 else "")
+        + "Выбери действие 👇"
     )
 
 

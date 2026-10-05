@@ -5,7 +5,7 @@ import logging
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, LabeledPrice, Message, PreCheckoutQuery
 
-from .. import keyboards as kb, texts
+from .. import keyboards as kb, texts, ui
 from ..config import settings
 from ..db import Payment, Session
 from ..services import check_crypto_payment, create_crypto_payment, record_stars_payment
@@ -16,7 +16,7 @@ log = logging.getLogger(__name__)
 
 @router.callback_query(F.data == "buy")
 async def buy(cb: CallbackQuery):
-    await cb.message.edit_text(texts.tariffs(), reply_markup=kb.plans())
+    await ui.show(cb, texts.tariffs(), reply_markup=kb.plans())
     await cb.answer()
 
 
@@ -25,7 +25,7 @@ async def choose_plan(cb: CallbackQuery):
     plan = settings.plan(cb.data.split(":", 1)[1])
     if not plan:
         return await cb.answer("Тариф не найден", show_alert=True)
-    await cb.message.edit_text(texts.choose_method(plan), reply_markup=kb.methods(plan.code))
+    await ui.show(cb, texts.choose_method(plan), reply_markup=kb.methods(plan.code))
     await cb.answer()
 
 
@@ -75,7 +75,7 @@ async def pay_crypto(cb: CallbackQuery):
     payment = await create_crypto_payment(cb.from_user.id, plan)
     if payment is None:
         return await cb.answer("CryptoBot сейчас недоступен, попробуй Stars или позже.", show_alert=True)
-    await cb.message.edit_text(texts.crypto_invoice(plan), reply_markup=kb.crypto_pay(payment.pay_url, payment.id))
+    await ui.show(cb, texts.crypto_invoice(plan), reply_markup=kb.crypto_pay(payment.pay_url, payment.id))
     await cb.answer()
 
 

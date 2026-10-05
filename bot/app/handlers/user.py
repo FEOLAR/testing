@@ -8,7 +8,7 @@ from aiogram.filters import CommandObject, CommandStart
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy import func, select
 
-from .. import keyboards as kb, texts
+from .. import keyboards as kb, texts, ui
 from ..config import settings
 from ..db import Session, User
 from ..remnawave import panel
@@ -34,15 +34,15 @@ async def start(message: Message, command: CommandObject):
         ref = int(command.args[4:])
     user, _ = await get_or_create_user(message.from_user.id, message.from_user.username,
                                        message.from_user.first_name, referrer_id=ref)
-    await message.answer(texts.welcome(message.from_user.first_name),
-                         reply_markup=kb.main_menu(show_trial=not user.trial_used))
+    await ui.send_welcome(message, texts.welcome(message.from_user.first_name),
+                          kb.main_menu(show_trial=not user.trial_used))
 
 
 @router.callback_query(F.data == "menu")
 async def menu(cb: CallbackQuery):
     user = await load_user(cb.from_user)
-    await cb.message.edit_text(texts.welcome(cb.from_user.first_name),
-                               reply_markup=kb.main_menu(show_trial=not user.trial_used))
+    await ui.show_welcome(cb, texts.welcome(cb.from_user.first_name),
+                          kb.main_menu(show_trial=not user.trial_used))
     await cb.answer()
 
 
@@ -55,19 +55,19 @@ async def profile(cb: CallbackQuery):
         except Exception:
             log.exception("panel refresh failed")
     active = is_active(user)
-    await cb.message.edit_text(texts.profile(user, active), reply_markup=kb.profile(active))
+    await ui.show(cb, texts.profile(user, active), reply_markup=kb.profile(active))
     await cb.answer()
 
 
 @router.callback_query(F.data == "howto")
 async def howto(cb: CallbackQuery):
-    await cb.message.edit_text(texts.HOWTO, reply_markup=kb.back("profile"), disable_web_page_preview=True)
+    await ui.show(cb, texts.HOWTO, reply_markup=kb.back("profile"), disable_web_page_preview=True)
     await cb.answer()
 
 
 @router.callback_query(F.data == "disconnect_help")
 async def disconnect_help(cb: CallbackQuery):
-    await cb.message.edit_text(texts.DISCONNECT_HELP, reply_markup=kb.back("menu"))
+    await ui.show(cb, texts.DISCONNECT_HELP, reply_markup=kb.back("menu"))
     await cb.answer()
 
 
@@ -84,7 +84,7 @@ async def trial(cb: CallbackQuery):
         return await cb.message.answer("😔 Не получилось создать подписку. Попробуй через минуту.")
     if user is None:
         return await cb.message.answer("Пробный период уже использован.")
-    await cb.message.edit_text(texts.trial_ok(user), reply_markup=kb.profile(True))
+    await ui.show(cb, texts.trial_ok(user), reply_markup=kb.profile(True))
 
 
 @router.callback_query(F.data == "ref")
@@ -95,7 +95,7 @@ async def referral(cb: CallbackQuery):
         invited = await s.scalar(select(func.count()).where(User.referrer_id == cb.from_user.id))
         paid = await s.scalar(select(func.count()).where(User.referrer_id == cb.from_user.id,
                                                          User.referral_rewarded.is_(True)))
-    await cb.message.edit_text(texts.referral(link, invited or 0, paid or 0), reply_markup=kb.back())
+    await ui.show(cb, texts.referral(link, invited or 0, paid or 0), reply_markup=kb.back())
     await cb.answer()
 
 
