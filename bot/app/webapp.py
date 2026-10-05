@@ -291,6 +291,40 @@ async def index(request: web.Request) -> web.FileResponse:
     return web.FileResponse(WEB_DIR / "index.html", headers={"Cache-Control": "no-cache"})
 
 
+def _info_page(bot_username: str) -> str:
+    """Публичная страница «О сервисе» — её Happ открывает по заголовку support-url подписки."""
+    from html import escape
+    from string import Template
+    brand = settings.brand_name
+    head, _, tail = brand.rpartition("VPN") if brand.upper().endswith("VPN") else ("", "", "")
+    brand_html = f"<b>{escape(head)}</b><span>VPN</span>" if head else f"<b>{escape(brand)}</b>"
+    base = settings.plan_list[0]
+    rows = []
+    for p in settings.plan_list:
+        per_month = round(p.rub / (p.days / 30))
+        disc = round(100 - per_month * 100 / base.rub) if p is not base else 0
+        save = f'<span class="save">−{disc}%</span>' if disc > 0 else ""
+        rows.append(f'<div class="plan"><div class="t"><b>{escape(p.title)}</b>{save}'
+                    f'<div class="m">{per_month} ₽ в месяц</div></div>'
+                    f'<div class="p">{p.rub} ₽<div class="m">{p.stars} ⭐</div></div></div>')
+    trial = (f"Новым пользователям — {settings.trial_days} дн. бесплатно." if settings.trial_days > 0 else "")
+    support = (f'<div class="h2">Поддержка</div><a class="btn sec" href="https://t.me/{escape(settings.support_username)}">'
+               f'💬 Написать в поддержку</a>' if settings.support_username else "")
+    tpl = Template((WEB_DIR / "info.html").read_text(encoding="utf-8"))
+    return tpl.safe_substitute(brand=escape(brand), brand_html=brand_html, bot=escape(bot_username or ""),
+                               devices=settings.device_limit, plans_html="".join(rows),
+                               trial_note=escape(trial), support_html=support)
+
+
+async def info(request: web.Request) -> web.Response:
+    return web.Response(text=_info_page(request.app["bot_username"]), content_type="text/html",
+                        headers={"Cache-Control": "public, max-age=300"})
+
+
+async def logo(request: web.Request) -> web.FileResponse:
+    return web.FileResponse(WEB_DIR / "logo.webp", headers={"Cache-Control": "public, max-age=86400", "Content-Type": "image/webp"})
+
+
 async def tg_js(request: web.Request) -> web.FileResponse:
     # Копия telegram-web-app.js: telegram.org из РФ может открываться нестабильно
     return web.FileResponse(WEB_DIR / "tg.js", headers={"Cache-Control": "public, max-age=86400"})
@@ -327,6 +361,8 @@ def build_app(bot: Bot, bot_username: str) -> web.Application:
     r.add_get(PREFIX, redirect_root)
     r.add_get(f"{PREFIX}/", index)
     r.add_get(f"{PREFIX}/tg.js", tg_js)
+    r.add_get(f"{PREFIX}/info", info)
+    r.add_get(f"{PREFIX}/logo.webp", logo)
     r.add_get(f"{PREFIX}/go", go)
     r.add_get(f"{PREFIX}/api/me", me)
     r.add_post(f"{PREFIX}/api/trial", trial)

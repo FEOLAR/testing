@@ -13,6 +13,8 @@ def main_menu(show_trial: bool) -> M:
         rows.insert(0, [B(text="📱 Открыть приложение", web_app=WebAppInfo(url=settings.miniapp_url))])
     if show_trial and settings.trial_days > 0:
         rows.insert(0, [B(text=f"🎁 Попробовать {settings.trial_days} дня бесплатно", callback_data="trial")])
+    if settings.miniapp_url:
+        rows.append([B(text="ℹ️ О сервисе", url=settings.miniapp_url.rstrip("/") + "/info")])
     row = []
     if settings.referral_bonus_days > 0:
         row.append(B(text="👥 Пригласить друга", callback_data="ref"))
