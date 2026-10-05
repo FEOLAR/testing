@@ -30,6 +30,7 @@ HELP = (
     "/ban &lt;tg_id&gt; · /unban &lt;tg_id&gt; — отключить/включить VPN\n"
     "/refund &lt;id оплаты&gt; — вернуть звёзды и забрать оплаченные дни\n"
     "/broadcast — ответь этой командой на сообщение, чтобы разослать его всем\n"
+    "/broadcast_old — то же, но через старого бота (сообщить о переезде)\n"
     "/test_stars — тестовая оплата 1 ⭐ (проверка автовыдачи)\n"
     "/stars_check — найти оплаты Stars, которые бот пропустил (/stars_check apply — выдать их)"
 )
@@ -241,3 +242,45 @@ async def _run_broadcast(bot: Bot, admin_chat: int, src: Message, ids: list[int]
                 break
         await asyncio.sleep(0.05)  # ~20 сообщений/сек — ниже лимита Telegram
     await safe_send(bot, admin_chat, f"✅ Рассылка завершена: доставлено {ok}, ошибок {fail}")
+
+
+@router.message(Command("broadcast_old"))
+async def broadcast_old(message: Message):
+    """Рассылка через СТАРОГО бота (после переезда): пишет и тем, кто ещё не запускал нового."""
+    if not settings.legacy_bot_token:
+        return await message.answer("Не задан LEGACY_BOT_TOKEN — рассылать через старого бота нечем.")
+    src = message.reply_to_message
+    if not src or not (src.text or src.caption):
+        return await message.answer("Ответь командой /broadcast_old на текстовое сообщение — его разошлёт старый бот "
+                                    "с кнопкой «Открыть нового бота».")
+    async with Session() as s:
+        ids = (await s.execute(select(User.tg_id))).scalars().all()
+    me = await message.bot.me()
+    await message.answer(f"📤 Рассылка через старого бота на {len(ids)} пользователей запущена…")
+    asyncio.create_task(_run_broadcast_old(message.bot, message.chat.id, src.html_text, me.username, ids))
+
+
+async def _run_broadcast_old(bot: Bot, admin_chat: int, text: str, new_username: str, ids: list[int]) -> None:
+    from aiogram.client.default import DefaultBotProperties
+    from aiogram.enums import ParseMode
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+    kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+        text="➡️ Открыть нового бота", url=f"https://t.me/{new_username}")]])
+    old = Bot(settings.legacy_bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    ok = fail = 0
+    try:
+        for tg_id in ids:
+            for _ in range(3):
+                try:
+                    await old.send_message(tg_id, text, reply_markup=kb)
+                    ok += 1
+                    break
+                except TelegramRetryAfter as e:
+                    await asyncio.sleep(e.retry_after + 1)
+                except Exception:
+                    fail += 1  # заблокировал старого бота или удалил аккаунт
+                    break
+            await asyncio.sleep(0.05)
+    finally:
+        await old.session.close()
+    await safe_send(bot, admin_chat, f"✅ Рассылка через старого бота завершена: доставлено {ok}, не доставлено {fail}")
