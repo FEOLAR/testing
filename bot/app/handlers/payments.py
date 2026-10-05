@@ -48,9 +48,10 @@ async def pay_stars(cb: CallbackQuery):
 
 @router.pre_checkout_query()
 async def pre_checkout(q: PreCheckoutQuery):
-    ok = q.currency == "XTR" and q.invoice_payload.startswith("vpn:") \
-        and settings.plan(q.invoice_payload.split(":")[1]) is not None
-    await q.answer(ok=ok, error_message=None if ok else "Тариф устарел, открой меню заново.")
+    plan = settings.plan(q.invoice_payload.split(":", 1)[1]) if q.invoice_payload.startswith("vpn:") else None
+    # сумма должна совпадать с текущей ценой тарифа: старый счёт после смены цен не примем
+    ok = q.currency == "XTR" and plan is not None and q.total_amount == plan.stars
+    await q.answer(ok=ok, error_message=None if ok else "Тариф или цена изменились — открой меню и создай новый счёт.")
 
 
 @router.message(F.successful_payment)

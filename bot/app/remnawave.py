@@ -93,6 +93,15 @@ class Remnawave:
         # а вручную отключённого (DISABLED) пользователя не включаем.
         return await self.update_user(username, expireAt=_iso(new_expire), hwidDeviceLimit=settings.device_limit)
 
+    async def remove_days(self, username: str, days: int) -> dict | None:
+        """Уменьшает срок на days (не раньше текущего момента). None — пользователя нет."""
+        user = await self.get_user(username)
+        if user is None:
+            return None
+        now = datetime.now(timezone.utc)
+        new_expire = max(now, parse_dt(user["expireAt"]) - timedelta(days=days))
+        return await self.update_user(username, expireAt=_iso(new_expire))
+
     async def reset_devices(self, username: str) -> bool:
         user = await self.get_user(username)
         if not user:

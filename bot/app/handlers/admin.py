@@ -28,8 +28,9 @@ HELP = (
     "/user &lt;tg_id&gt; — инфо о пользователе\n"
     "/give &lt;tg_id&gt; &lt;дни&gt; — выдать/продлить подписку\n"
     "/ban &lt;tg_id&gt; · /unban &lt;tg_id&gt; — отключить/включить VPN\n"
-    "/refund &lt;id оплаты&gt; — вернуть звёзды (только Stars)\n"
+    "/refund &lt;id оплаты&gt; — вернуть звёзды и забрать оплаченные дни\n"
     "/broadcast — ответь этой командой на сообщение, чтобы разослать его всем\n"
+    "/test_stars — тестовая оплата 1 ⭐ (проверка автовыдачи)\n"
     "/stars_check — найти оплаты Stars, которые бот пропустил (/stars_check apply — выдать их)"
 )
 
@@ -175,8 +176,28 @@ async def refund(message: Message, command: CommandObject):
                 await old.session.close()
         p.status = "refunded"
         await s.commit()
-    await message.answer(f"↩️ Звёзды по оплате #{pid} возвращены. "
-                         f"Срок подписки при необходимости уменьши в панели вручную или /ban.")
+    try:  # забираем оплаченные дни обратно
+        await panel.remove_days(f"tg_{p.tg_id}", p.days)
+        async with Session() as s2:
+            u = await s2.get(User, p.tg_id)
+        if u:
+            await refresh_from_panel(u)
+        days_note = f"Срок подписки уменьшен на {p.days} дн."
+    except Exception:
+        log.exception("refund: remove days failed")
+        days_note = "⚠️ Срок в панели уменьшить не удалось — сделай вручную."
+    await message.answer(f"↩️ Звёзды по оплате #{pid} возвращены. {days_note}")
+
+
+@router.message(Command("test_stars"))
+async def test_stars(message: Message):
+    """Счёт на 1 ⭐ (1 день) — проверить всю цепочку: оплата → запись → выдача дней → уведомление."""
+    from aiogram.types import LabeledPrice
+    from ..config import TEST_PLAN
+    await message.answer_invoice(
+        title="Тест оплаты", description="Проверка Telegram Stars: 1 ⭐ = 1 день подписки",
+        payload=f"vpn:{TEST_PLAN.code}", currency="XTR",
+        prices=[LabeledPrice(label="Тест", amount=TEST_PLAN.stars)])
 
 
 @router.message(Command("stars_check"))

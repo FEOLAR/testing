@@ -17,6 +17,9 @@ class Plan:
         return names.get(self.days, f"{self.days} дн.")
 
 
+TEST_PLAN = Plan(code="test", days=1, rub=0, stars=1)
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
@@ -65,6 +68,8 @@ class Settings(BaseSettings):
         return out
 
     def plan(self, code: str) -> Plan | None:
+        if code == TEST_PLAN.code:  # скрытый тариф для проверки оплаты админом: 1 ⭐ = 1 день
+            return TEST_PLAN
         return next((p for p in self.plan_list if p.code == code), None)
 
     @property
