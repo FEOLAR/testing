@@ -23,7 +23,7 @@ class User(Base):
 
     tg_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     username: Mapped[str | None] = mapped_column(String(64))
-    first_name: Mapped[str | None] = mapped_column(String(128))
+    first_name: Mapped[str | None] = mapped_column(String(256))
     referrer_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     referral_rewarded: Mapped[bool] = mapped_column(Boolean, default=False)
     trial_used: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -53,7 +53,7 @@ class Payment(Base):
     method: Mapped[str] = mapped_column(String(16))  # stars | crypto | admin
     amount: Mapped[str] = mapped_column(String(32))  # "150 XTR" / "199 RUB"
     status: Mapped[str] = mapped_column(String(16), default="pending", index=True)  # pending|paid|expired|refunded
-    external_id: Mapped[str | None] = mapped_column(String(128))  # invoice_id / charge_id
+    external_id: Mapped[str | None] = mapped_column(String(512))  # invoice_id / charge_id
     pay_url: Mapped[str | None] = mapped_column(String(512))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -77,6 +77,9 @@ MIGRATIONS = [
     "ALTER TABLE payments ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now()",
     "ALTER TABLE payments ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now()",
     "CREATE UNIQUE INDEX IF NOT EXISTS uq_payment_external_idx ON payments (method, external_id)",
+    # ID платежей Stars бывают длиннее 128 символов
+    "ALTER TABLE payments ALTER COLUMN external_id TYPE VARCHAR(512)",
+    "ALTER TABLE users ALTER COLUMN first_name TYPE VARCHAR(256)",
 ]
 
 
