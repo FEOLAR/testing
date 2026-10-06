@@ -314,8 +314,24 @@ async def emoji(message: Message, command: CommandObject, bot: Bot):
     items = [(st.emoji or "⭐", st.custom_emoji_id) for st in pack.stickers if st.custom_emoji_id]
     if not items:
         return await message.answer("Это не пак эмодзи (нет custom_emoji_id).")
-    lines = [f"{i}. {e} <code>{cid}</code>" for i, (e, cid) in enumerate(items, 1)]
-    for i in range(0, len(lines), 50):
-        await message.answer(f"<b>{escape(pack.title)}</b> ({len(items)} шт.)\n" + "\n".join(lines[i:i + 50]))
-    sample = " ".join(f'<tg-emoji emoji-id="{cid}">{e}</tg-emoji>' for e, cid in items[:20])
-    await message.answer("Проверка — если ниже анимированные эмодзи из пака, бот может их использовать:\n\n" + sample)
+    # сами эмодзи с номерами (по 5 в строке) — выбирать по картинке; в тексте/копии видны только заменители
+    cells = [f'<code>{i:>3}</code> <tg-emoji emoji-id="{cid}">{e}</tg-emoji>' for i, (e, cid) in enumerate(items, 1)]
+    await message.answer(f"<b>{escape(pack.title)}</b> — {len(items)} шт.\n"
+                         "Если ниже видны значки из пака (а не обычные эмодзи) — бот может их использовать. "
+                         "Выбирай по номерам; ID — командой <code>/emoji_ids ИМЯ</code>.")
+    for i in range(0, len(cells), 100):
+        chunk = cells[i:i + 100]
+        await message.answer("\n".join("   ".join(chunk[j:j + 5]) for j in range(0, len(chunk), 5)))
+
+
+@router.message(Command("emoji_ids"))
+async def emoji_ids(message: Message, command: CommandObject, bot: Bot):
+    name = (command.args or "").strip().rstrip("/").split("/")[-1]
+    try:
+        pack = await bot.get_sticker_set(name)
+    except Exception as e:
+        return await message.answer(f"Пак не найден: {escape(str(e))}")
+    lines = [f"{i}. {st.emoji} <code>{st.custom_emoji_id}</code>"
+             for i, st in enumerate(pack.stickers, 1) if st.custom_emoji_id]
+    for i in range(0, len(lines), 100):
+        await message.answer("\n".join(lines[i:i + 100]))
