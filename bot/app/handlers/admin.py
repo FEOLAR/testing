@@ -32,7 +32,8 @@ HELP = (
     "/broadcast — ответь этой командой на сообщение, чтобы разослать его всем\n"
     "/broadcast_old — то же, но через старого бота (сообщить о переезде)\n"
     "/test_stars — тестовая оплата 1 ⭐ (проверка автовыдачи)\n"
-    "/stars_check — найти оплаты Stars, которые бот пропустил (/stars_check apply — выдать их)"
+    "/stars_check — найти оплаты Stars, которые бот пропустил (/stars_check apply — выдать их)\n"
+    "/emoji &lt;пак&gt; — ID премиум-эмодзи из пака; ответом на сообщение — его текст в HTML с эмодзи"
 )
 
 
@@ -284,3 +285,37 @@ async def _run_broadcast_old(bot: Bot, admin_chat: int, text: str, new_username:
     finally:
         await old.session.close()
     await safe_send(bot, admin_chat, f"✅ Рассылка через старого бота завершена: доставлено {ok}, не доставлено {fail}")
+
+
+@router.message(Command("emoji"))
+async def emoji(message: Message, command: CommandObject, bot: Bot):
+    """Помогает вставить премиум-эмодзи в тексты бота.
+
+    /emoji <имя пака или ссылка t.me/addemoji/...> — список эмодзи пака с их ID и пробная отправка;
+    /emoji ответом на сообщение — HTML этого сообщения с тегами <tg-emoji> (копировать в texts.py).
+    """
+    src = message.reply_to_message
+    if src and (src.text or src.caption):
+        html_text = src.html_text  # aiogram превращает custom_emoji в <tg-emoji emoji-id="...">
+        ids = [e.custom_emoji_id for e in (src.entities or src.caption_entities or []) if e.type == "custom_emoji"]
+        await message.answer(f"Премиум-эмодзи в сообщении: {len(ids)}\n\n<pre>{escape(html_text)}</pre>")
+        if ids:
+            await message.answer("👇 Так это сообщение отправит бот (если эмодзи обычные — боту они недоступны):")
+            await message.answer(html_text)
+        return
+    name = (command.args or "").strip().rstrip("/").split("/")[-1]
+    if not name:
+        return await message.answer("Использование:\n/emoji &lt;имя пака или ссылка t.me/addemoji/...&gt;\n"
+                                    "или ответь /emoji на сообщение с премиум-эмодзи")
+    try:
+        pack = await bot.get_sticker_set(name)
+    except Exception as e:
+        return await message.answer(f"Пак не найден: {escape(str(e))}")
+    items = [(st.emoji or "⭐", st.custom_emoji_id) for st in pack.stickers if st.custom_emoji_id]
+    if not items:
+        return await message.answer("Это не пак эмодзи (нет custom_emoji_id).")
+    lines = [f"{i}. {e} <code>{cid}</code>" for i, (e, cid) in enumerate(items, 1)]
+    for i in range(0, len(lines), 50):
+        await message.answer(f"<b>{escape(pack.title)}</b> ({len(items)} шт.)\n" + "\n".join(lines[i:i + 50]))
+    sample = " ".join(f'<tg-emoji emoji-id="{cid}">{e}</tg-emoji>' for e, cid in items[:20])
+    await message.answer("Проверка — если ниже анимированные эмодзи из пака, бот может их использовать:\n\n" + sample)
