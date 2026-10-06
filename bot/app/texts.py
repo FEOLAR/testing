@@ -5,6 +5,7 @@ from html import escape
 from zoneinfo import ZoneInfo
 
 from .config import Plan, settings
+from .emoji import e
 
 TZ = ZoneInfo("Europe/Moscow")
 
@@ -21,28 +22,28 @@ def days_left(dt: datetime | None) -> int:
 
 def welcome(name: str | None) -> str:
     return (
-        f"🕳 <b>Добро пожаловать в {escape(settings.brand_name)}, {escape(name or 'путник')}!</b>\n\n"
+        f"{e('logo')} <b>Добро пожаловать в {escape(settings.brand_name)}, {escape(name or 'путник')}!</b>\n\n"
         "Здесь блокировки исчезают, как свет за горизонтом событий.\n\n"
-        "⚡️ <b>Быстро</b> — серверы в Европе, канал 1 Гбит/с\n"
-        "🛡 <b>Не блокируется</b> — VLESS Reality, трафик выглядит как обычный сайт\n"
-        "🇷🇺 <b>Свои сайты напрямую</b> — банки, Госуслуги и игры работают без выключения VPN\n"
-        f"📱 <b>До {settings.device_limit} устройств</b> — iPhone, Android, Windows, macOS\n\n"
-        + (f"🎁 Первые <b>{settings.trial_days} дня бесплатно</b> — без карты и обязательств.\n\n"
+        f"{e('zap')} <b>Быстро</b> — серверы в Европе, канал 1 Гбит/с\n"
+        f"{e('shield')} <b>Не блокируется</b> — VLESS Reality, трафик выглядит как обычный сайт\n"
+        f"{e('globe')} <b>Свои сайты напрямую</b> — банки, Госуслуги и игры работают без выключения VPN\n"
+        f"{e('phone')} <b>До {settings.device_limit} устройств</b> — iPhone, Android, Windows, macOS\n\n"
+        + (f"{e('gift')} Первые <b>{settings.trial_days} дня бесплатно</b> — без карты и обязательств.\n\n"
            if settings.trial_days > 0 else "")
-        + "Выбери действие 👇"
+        + f"Выбери действие {e('down')}"
     )
 
 
 def profile(user, active: bool) -> str:
-    lines = ["👤 <b>Моя подписка</b>\n"]
+    lines = [f"{e('user')} <b>Моя подписка</b>\n"]
     if active:
-        lines.append(f"Статус: ✅ активна до <b>{fmt_date(user.expire_at)}</b>")
+        lines.append(f"Статус: {e('ok')} активна до <b>{fmt_date(user.expire_at)}</b>")
         lines.append(f"Осталось дней: <b>{days_left(user.expire_at)}</b>")
         lines.append(f"Устройств: до {settings.device_limit}\n")
-        lines.append("🔗 Ссылка-подписка (нажми, чтобы скопировать):")
+        lines.append(f"{e('key')} Ссылка-подписка (нажми, чтобы скопировать):")
         lines.append(f"<code>{escape(user.sub_url or '')}</code>")
     elif user.expire_at:
-        lines.append(f"Статус: ❌ истекла {fmt_date(user.expire_at)}")
+        lines.append(f"Статус: {e('no')} истекла {fmt_date(user.expire_at)}")
         lines.append("Продли подписку — ссылка останется прежней.")
     else:
         lines.append("Подписки пока нет.")
@@ -50,14 +51,14 @@ def profile(user, active: bool) -> str:
 
 
 def tariffs() -> str:
-    rows = ["💳 <b>Тарифы</b>\n", f"Все тарифы: безлимитный трафик, до {settings.device_limit} устройств.\n"]
+    rows = [f"{e('card')} <b>Тарифы</b>\n", f"Все тарифы: безлимитный трафик, до {settings.device_limit} устройств.\n"]
     base = settings.plan_list[0]
     for p in settings.plan_list:
         per_month = round(p.rub / (p.days / 30))
         discount = round(100 - per_month * 100 / base.rub) if p is not base else 0
         tail = f"  (−{discount}%)" if discount > 0 else ""
         rows.append(f"• {p.title} — {p.rub} ₽ / {p.stars} ⭐{tail}")
-    rows.append("\nВыбери срок 👇")
+    rows.append(f"\nВыбери срок {e('down')}")
     return "\n".join(rows)
 
 
@@ -67,7 +68,7 @@ def choose_method(plan: Plan) -> str:
 
 def crypto_invoice(plan: Plan) -> str:
     return (
-        f"🪙 Счёт на <b>{plan.rub} ₽</b> в криптовалюте ({settings.cryptopay_assets.replace(',', ', ')}).\n\n"
+        f"{e('coin')} Счёт на <b>{plan.rub} ₽</b> в криптовалюте ({settings.cryptopay_assets.replace(',', ', ')}).\n\n"
         "1. Нажми «Оплатить» и заверши оплату в @CryptoBot\n"
         "2. Вернись сюда — подписка активируется автоматически в течение минуты\n\n"
         "Счёт действует 1 час."
@@ -85,7 +86,7 @@ def paid(user, days: int) -> str:
 
 def trial_ok(user) -> str:
     return (
-        f"🎁 Пробный период на <b>{settings.trial_days} дн.</b> активирован!\n\n"
+        f"{e('gift')} Пробный период на <b>{settings.trial_days} дн.</b> активирован!\n\n"
         f"🔗 Ссылка-подписка:\n<code>{escape(user.sub_url or '')}</code>\n\n"
         "Скопируй её и добавь в приложение — инструкция по кнопке ниже."
     )

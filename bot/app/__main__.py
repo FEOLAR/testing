@@ -9,6 +9,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import BotCommand, ErrorEvent
 
 from .config import settings
+from . import emoji
 from .cryptopay import crypto
 from .db import init_db
 from .handlers import admin, payments, user
@@ -48,6 +49,7 @@ async def main() -> None:
         return True
 
     await bot.set_my_commands([BotCommand(command="start", description="Главное меню")])
+    emoji_task = asyncio.create_task(emoji.setup(bot))  # фирменные эмодзи грузятся в фоне, не задерживая старт
 
     sched = setup_scheduler(bot)
     sched.start()

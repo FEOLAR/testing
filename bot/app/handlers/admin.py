@@ -34,7 +34,8 @@ HELP = (
     "/test_stars — тестовая оплата 1 ⭐ (проверка автовыдачи)\n"
     "/stars_check — найти оплаты Stars, которые бот пропустил (/stars_check apply — выдать их)\n"
     "/emoji &lt;пак&gt; — ID премиум-эмодзи из пака; ответом на сообщение — его текст в HTML с эмодзи\n"
-    "/emoji_mypack — бот создаёт свой пак эмодзи (с логотипом) и проверяет, может ли его показывать"
+    "/emoji_mypack — бот создаёт свой пак эмодзи (с логотипом) и проверяет, может ли его показывать\n"
+    "/icons — фирменные иконки бота (пак загружается сам при запуске)"
 )
 
 
@@ -360,3 +361,15 @@ async def emoji_mypack(message: Message, bot: Bot):
     await message.answer(f"Пак: https://t.me/addemoji/{name}\nID: <code>{cid}</code>\n\n"
                          f'Проверка: <tg-emoji emoji-id="{cid}">🕳</tg-emoji> ← если здесь логотип, а не 🕳, '
                          "бот может показывать эмодзи из своего пака.")
+
+
+@router.message(Command("icons"))
+async def icons(message: Message, bot: Bot):
+    from .. import emoji
+    if command_args := (message.text or "").split()[1:]:
+        if command_args[0] == "reload":
+            await emoji.setup(bot)
+    loaded = len(emoji._ids)
+    rows = [f"{emoji.e(n)} <code>{n}</code>" for n, _ in emoji.ICONS]
+    await message.answer(f"Иконок загружено: {loaded}/{len(emoji.ICONS)} (/icons reload — перезагрузить)\n\n"
+                         + "\n".join(rows))
