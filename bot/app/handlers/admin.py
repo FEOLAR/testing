@@ -7,7 +7,7 @@ from html import escape
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramRetryAfter
 from aiogram.filters import Command, CommandObject
-from aiogram.types import Message
+from aiogram.types import FSInputFile, InputSticker, Message
 from sqlalchemy import select
 
 from ..config import settings
@@ -33,7 +33,8 @@ HELP = (
     "/broadcast_old — то же, но через старого бота (сообщить о переезде)\n"
     "/test_stars — тестовая оплата 1 ⭐ (проверка автовыдачи)\n"
     "/stars_check — найти оплаты Stars, которые бот пропустил (/stars_check apply — выдать их)\n"
-    "/emoji &lt;пак&gt; — ID премиум-эмодзи из пака; ответом на сообщение — его текст в HTML с эмодзи"
+    "/emoji &lt;пак&gt; — ID премиум-эмодзи из пака; ответом на сообщение — его текст в HTML с эмодзи\n"
+    "/emoji_mypack — бот создаёт свой пак эмодзи (с логотипом) и проверяет, может ли его показывать"
 )
 
 
@@ -335,3 +336,27 @@ async def emoji_ids(message: Message, command: CommandObject, bot: Bot):
              for i, st in enumerate(pack.stickers, 1) if st.custom_emoji_id]
     for i in range(0, len(lines), 100):
         await message.answer("\n".join(lines[i:i + 100]))
+
+
+@router.message(Command("emoji_mypack"))
+async def emoji_mypack(message: Message, bot: Bot):
+    """Создаёт пак эмодзи от имени бота (владелец пака — админ) и пробует отправить эмодзи из него."""
+    from pathlib import Path
+    me = await bot.me()
+    name = f"whitehole_by_{me.username}"
+    try:
+        pack = await bot.get_sticker_set(name)
+    except Exception:
+        logo = Path(__file__).resolve().parent.parent / "web" / "emoji_logo.png"
+        try:
+            await bot.create_new_sticker_set(
+                user_id=message.from_user.id, name=name, title=f"{settings.brand_name} emoji",
+                stickers=[InputSticker(sticker=FSInputFile(logo), format="static", emoji_list=["🕳"])],
+                sticker_type="custom_emoji")
+        except Exception as e:
+            return await message.answer(f"Не удалось создать пак: {escape(str(e))}")
+        pack = await bot.get_sticker_set(name)
+    cid = pack.stickers[0].custom_emoji_id
+    await message.answer(f"Пак: https://t.me/addemoji/{name}\nID: <code>{cid}</code>\n\n"
+                         f'Проверка: <tg-emoji emoji-id="{cid}">🕳</tg-emoji> ← если здесь логотип, а не 🕳, '
+                         "бот может показывать эмодзи из своего пака.")
