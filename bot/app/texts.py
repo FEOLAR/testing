@@ -95,8 +95,13 @@ def trial_ok(user) -> str:
 HOWTO = (
     "📲 <b>Как подключиться</b>\n\n"
     "<b>1. Установи Happ</b>\n"
-    "🍏 <b>iPhone / iPad / Mac</b> — <a href='https://apps.apple.com/app/happ-proxy-utility/id6504287215'>Happ в App Store</a>. "
-    "Пишет «недоступно в вашей стране»? Нажми кнопку ниже — расскажем, как сменить регион.\n"
+    + (
+        f"🍏 <b>iPhone / iPad / Mac</b> — <a href='{escape(settings.happ_ios_ru_url, quote=True)}'>Happ в российском App Store</a>. "
+        "Не открывается или пишет «недоступно»? Его снова удалили — нажми кнопку ниже, расскажем, как сменить регион.\n"
+        if settings.happ_ios_ru_url else
+        "🍏 <b>iPhone / iPad / Mac</b> — <a href='https://apps.apple.com/app/happ-proxy-utility/id6504287215'>Happ в App Store</a>. "
+        "Пишет «недоступно в вашей стране»? Нажми кнопку ниже — расскажем, как сменить регион.\n"
+    ) +
     "🤖 <b>Android, Huawei, Honor</b> — <a href='https://github.com/Happ-proxy/happ-android/releases/latest/download/Happ.apk'>скачай Happ.apk</a>, открой файл → "
     "разреши «Установку из этого источника» → «Установить».\n"
     "💻 <b>Windows</b> — <a href='https://github.com/Happ-proxy/happ-desktop/releases'>Happ для Windows</a>\n\n"

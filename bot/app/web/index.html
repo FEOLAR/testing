@@ -294,6 +294,15 @@ const APPS = {
     {id: 'hiddify', name: 'Hiddify', url: 'https://github.com/hiddify/hiddify-app/releases'},
   ],
 };
+// Ссылка на Happ в российском App Store (HAPP_IOS_RU_URL в .env): Happ то удаляют, то он возвращается
+// под новым именем — если ссылка задана, даём её первой, смена региона остаётся запасным вариантом.
+const RU_NOTE = `<div class="small" style="margin-top:6px">Это версия Happ для российского App Store. Если пишет «недоступно» — его снова удалили, смени регион:</div>`;
+function appLink(app) {
+  const ru = S.me && S.me.happ_ios_ru;
+  if (ru && app.id === 'happ' && (S.platform === 'ios' || S.platform === 'macos'))
+    return {url: ru, note: RU_NOTE + REGION_NOTE};
+  return {url: app.url, note: app.note || ''};
+}
 const PLATFORMS = [['ios','iPhone / iPad'],['android','Android'],['windows','Windows'],['macos','macOS'],['linux','Linux']];
 function detectPlatform() {
   const p = (tg && tg.platform) || '', ua = navigator.userAgent;
@@ -446,7 +455,7 @@ function setupBlock() {
     <div class="apps">${apps.map(a => `<button class="app ${a.id === S.app ? 'on' : ''}" data-app="${a.id}">${a.name}${a.rec ? '<span class="tag">★ Рекомендуем</span>' : '<span class="tag" style="color:var(--dim)">&nbsp;</span>'}</button>`).join('')}</div>
     <div class="steps">
       <div class="step"><div class="num">1</div><div><div class="h3">Установи приложение</div>
-        <div class="muted small">Скачай ${esc(app.name)} для ${pname}.${app.id !== 'happ' ? ' Разделение трафика (RU-сайты и игры напрямую) работает только в Happ.' : ''}</div>${app.note || ''}
+        <div class="muted small">Скачай ${esc(app.name)} для ${pname}.${app.id !== 'happ' ? ' Разделение трафика (RU-сайты и игры напрямую) работает только в Happ.' : ''}</div>${appLink(app).note}
         <button class="btn sec sm" id="instBtn">${ic('down',16)} Скачать ${esc(app.name)}</button></div></div>
       <div class="step"><div class="num">2</div><div><div class="h3">Добавь подписку</div>
         <div class="muted small">Нажми кнопку — приложение откроется, и подписка добавится сама. Не сработало — скопируй ссылку и в приложении нажми «+» → «Из буфера».</div>
@@ -462,7 +471,7 @@ function bindSetup() {
   ps.onchange = () => { S.platform = ps.value; S.app = null; renderHome(); };
   view.querySelectorAll('[data-app]').forEach(b => b.onclick = () => { S.app = b.dataset.app; haptic(); renderHome(); });
   const app = APPS[S.platform].find(a => a.id === S.app);
-  $('#instBtn').onclick = () => openExternal(app.url);
+  $('#instBtn').onclick = () => openExternal(appLink(app).url);
   $('#addBtn').onclick = () => openDeeplink(DL[app.id](S.me.sub.sub_url));
   $('#copyBtn').onclick = () => copy(S.me.sub.sub_url, 'Ссылка-подписка скопирована');
 }

@@ -32,6 +32,9 @@ async def main() -> None:
     await init_db()
 
     bot = Bot(settings.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    bot.session.middleware(emoji.ButtonIconsGuard())  # иконки на кнопках не должны ломать меню
+    import aiogram
+    log.info("aiogram %s (Bot API %s)", aiogram.__version__, aiogram.__api_version__)
     dp = Dispatcher(storage=make_storage())
     dp.include_routers(admin.router, payments.router, user.router)
 

@@ -90,3 +90,55 @@ async def setup(bot: Bot) -> None:
         log.info("emoji: pack %s ready, %d icons", name, len(_ids))
     except Exception:
         log.exception("emoji: setup failed, using plain emoji")
+
+
+# ---------- иконки на кнопках ----------
+# Telegram разрешает боту ставить на кнопки иконки из своего пака (icon_custom_emoji_id), пока у владельца
+# бота есть Telegram Premium. Если Telegram откажет (Premium закончился и т.п.) — middleware ниже повторит
+# запрос без иконок и выключит их до перезапуска бота: меню не сломается, вернутся обычные эмодзи в тексте.
+_buttons_ok = True
+
+
+def button_icon(name: str) -> str | None:
+    """ID фирменной иконки для кнопки или None (тогда в тексте кнопки остаётся обычный эмодзи)."""
+    return _ids.get(name) if (_buttons_ok and settings.button_icons) else None
+
+
+def _strip_icons(markup):
+    rows = getattr(markup, "inline_keyboard", None)
+    if not rows or not any(getattr(b, "icon_custom_emoji_id", None) for row in rows for b in row):
+        return None
+    fixed = []
+    for row in rows:
+        new_row = []
+        for b in row:
+            if getattr(b, "icon_custom_emoji_id", None):
+                icon = next((n for n, cid in _ids.items() if cid == b.icon_custom_emoji_id), None)
+                text = f"{FALLBACK[icon]} {b.text}" if icon else b.text
+                b = b.model_copy(update={"icon_custom_emoji_id": None, "text": text})
+            new_row.append(b)
+        fixed.append(new_row)
+    return markup.model_copy(update={"inline_keyboard": fixed})
+
+
+class ButtonIconsGuard:
+    """Request-middleware: при отказе Telegram из-за иконок на кнопках повторяет запрос без них."""
+
+    async def __call__(self, make_request, bot, method):
+        global _buttons_ok
+        try:
+            return await make_request(bot, method)
+        except Exception as err:
+            from aiogram.exceptions import TelegramBadRequest
+            markup = getattr(method, "reply_markup", None)
+            plain = _strip_icons(markup) if isinstance(err, TelegramBadRequest) else None
+            if plain is None or "not modified" in str(err):
+                raise
+            try:
+                result = await make_request(bot, method.model_copy(update={"reply_markup": plain}))
+            except Exception:
+                raise err  # без иконок тоже ошибка — значит, дело не в них
+            if _buttons_ok:  # без иконок прошло — выключаем их до перезапуска
+                log.warning("emoji: Telegram rejected button icons (%s) — turning them off", err)
+                _buttons_ok = False
+            return result

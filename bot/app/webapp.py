@@ -144,6 +144,7 @@ async def me(request: web.Request) -> web.Response:
         "trial": {"available": not user.trial_used and settings.trial_days > 0, "days": settings.trial_days},
         "plans": plans,
         "crypto_enabled": settings.crypto_enabled,
+        "happ_ios_ru": settings.happ_ios_ru_url,
         "referral": await referral_info(bot_username, tg.id) if settings.referral_bonus_days > 0 else None,
     })
 

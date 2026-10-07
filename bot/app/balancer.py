@@ -9,6 +9,9 @@
 - Нода, которая не на связи с панелью (или отключена, или выбрала лимит трафика),
   убирается из адреса; когда снова в строю — возвращается. Админам приходит уведомление.
 - Если исправных нод у хоста нет совсем, адрес не трогаем (пустой адрес хуже старого).
+- Учёт загрузки (BALANCE_BY_LOAD=true): если на ноде заметно больше людей онлайн, чем ей положено
+  по весу (NODE_WEIGHTS), её временно убирают из адреса — новые подключения и обновления подписки
+  уходят на свободные ноды. Когда нагрузка выровняется, нода возвращается. Уведомлений нет — это штатно.
 """
 from __future__ import annotations
 
@@ -28,6 +31,13 @@ STABLE_CHECKS = 2
 
 _state: dict[str, bool] = {}       # uuid ноды -> принятое состояние (исправна или нет)
 _streak: dict[str, int] = {}       # uuid ноды -> сколько проверок подряд состояние отличается от принятого
+_overloaded: set[str] = set()      # uuid нод, временно убранных из адресов из-за перегрузки
+
+# Перегрузка: онлайн ноды выше «положенного по весу» на OVERLOAD_RATIO и хотя бы на OVERLOAD_MIN человек.
+# Возврат — когда превышение упало до RELEASE_RATIO (запас, чтобы нода не «мигала» каждую минуту).
+OVERLOAD_RATIO = 1.25
+RELEASE_RATIO = 1.05
+OVERLOAD_MIN = 5
 
 
 def node_problem(node: dict) -> str | None:
@@ -61,6 +71,39 @@ def _settle(nodes: list[dict]) -> list[tuple[dict, bool]]:
     return changed
 
 
+def weight(node: dict) -> float:
+    return settings.weights.get(node.get("name", ""), 1.0)
+
+
+def update_overload(nodes: list[dict]) -> None:
+    """Пересчитывает набор перегруженных нод среди исправных (по всем сразу, а не по хосту:
+    одна нода обслуживает все свои хосты)."""
+    if not settings.balance_by_load:
+        _overloaded.clear()
+        return
+    alive = [n for n in nodes if _state.get(n["uuid"], node_problem(n) is None)]
+    total_w = sum(weight(n) for n in alive)
+    online = sum(n.get("usersOnline") or 0 for n in alive)
+    if len(alive) < 2 or not total_w:
+        _overloaded.clear()
+        return
+    for n in alive:
+        expected = online * weight(n) / total_w
+        have = n.get("usersOnline") or 0
+        if n["uuid"] in _overloaded:
+            if have <= expected * RELEASE_RATIO or have - expected < OVERLOAD_MIN / 2:
+                _overloaded.discard(n["uuid"])
+                log.info("balancer: node %s back (online %s, fair %.0f)", n.get("name"), have, expected)
+        elif have > expected * OVERLOAD_RATIO and have - expected >= OVERLOAD_MIN:
+            _overloaded.add(n["uuid"])
+            log.info("balancer: node %s overloaded (online %s, fair %.0f)", n.get("name"), have, expected)
+    _overloaded.intersection_update(n["uuid"] for n in alive)
+
+
+def load_status(node: dict) -> str:
+    return "перегружена — новых не даю" if node["uuid"] in _overloaded else ""
+
+
 def plan_addresses(hosts: list[dict], nodes: list[dict]) -> list[tuple[dict, str]]:
     """Для AUTO-хостов считает новый адрес. Возвращает [(хост, новый адрес)] только где он меняется."""
     by_uuid = {n["uuid"]: n for n in nodes}
@@ -69,9 +112,11 @@ def plan_addresses(hosts: list[dict], nodes: list[dict]) -> list[tuple[dict, str
         if settings.auto_host_tag not in (h.get("tags") or []):
             continue
         linked = [by_uuid[u] for u in h.get("nodes") or [] if u in by_uuid]
-        alive = [n["address"] for n in linked if _state.get(n["uuid"], node_problem(n) is None)]
+        alive = [n for n in linked if _state.get(n["uuid"], node_problem(n) is None)]
         if not alive:
             continue  # все ноды хоста лежат или не привязаны — оставляем как было
+        free = [n for n in alive if n["uuid"] not in _overloaded]
+        alive = [n["address"] for n in (free or alive)]  # все перегружены — даём все живые
         address = ",".join(dict.fromkeys(alive))  # без повторов, порядок как в привязке
         if address != h.get("address"):
             out.append((h, address))
@@ -91,6 +136,7 @@ async def balance_hosts(bot: Bot) -> None:
         else:
             await notify_admins(bot, f"🔴 Нода <b>{escape(n['name'])}</b>: {node_problem(n)}. "
                                      f"Убираю её из AUTO-хостов (где есть другие живые ноды) — клиенты при обновлении подписки уйдут на них.")
+    update_overload(nodes)
     for h, address in plan_addresses(hosts, nodes):
         try:
             await panel.update_host(h["uuid"], address=address)
@@ -110,8 +156,14 @@ async def status_text() -> str:
             traffic = f" · {n['trafficUsedBytes'] / 1024**4:.2f} ТБ"
             if n.get("trafficLimitBytes"):
                 traffic += f" из {n['trafficLimitBytes'] / 1024**4:.1f}"
-        lines.append(f"{'🔴' if problem else '🟢'} {escape(n['name'])} <code>{escape(n['address'])}</code> · "
-                     f"онлайн {n.get('usersOnline', 0)}{traffic}" + (f" — {problem}" if problem else ""))
+        w = weight(n)
+        load = load_status(n)
+        mark = "🔴" if problem else ("🟡" if load else "🟢")
+        lines.append(f"{mark} {escape(n['name'])} <code>{escape(n['address'])}</code> · "
+                     f"онлайн {n.get('usersOnline', 0)}{traffic}" + (f" · вес {w:g}" if w != 1 else "")
+                     + (f" — {problem}" if problem else (f" — {load}" if load else "")))
+    if settings.balance_by_load:
+        lines.append("⚖️ Учёт загрузки включён: 🟡 — нода перегружена, новых клиентов временно шлю на другие")
     auto = [h for h in hosts if settings.auto_host_tag in (h.get("tags") or [])]
     lines.append(f"\n🔀 <b>Хосты с тегом {settings.auto_host_tag}</b>")
     if not auto:

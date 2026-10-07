@@ -39,6 +39,16 @@ class Settings(BaseSettings):
     traffic_limit_gb: int = 0
     # Хосты с этим тегом бот сам наполняет адресами исправных нод (см. balancer.py). Пусто — выключено.
     auto_host_tag: str = "AUTO"
+    # Взвешенный балансировщик: учитывать загрузку нод (онлайн на ноде / её вес). false — поровну, как раньше.
+    balance_by_load: bool = True
+    # Вес нод для балансировщика: "FR-1:2,GE-1:1" — FR-1 мощнее вдвое. Имя как в панели; не указана — вес 1.
+    node_weights: str = ""
+    # Фирменные иконки на кнопках меню (нужен Telegram Premium у владельца бота). false — обычные эмодзи.
+    button_icons: bool = True
+
+    # Ссылка на Happ в российском App Store, когда он там есть (например, «Happ - Proxy Utility+»).
+    # Пусто — в инструкции для iPhone только обычный Happ + смена региона.
+    happ_ios_ru_url: str = ""
 
     plans: str = "30:199:150,90:549:400,180:999:750,365:1790:1350"
     trial_days: int = 3
@@ -71,6 +81,15 @@ class Settings(BaseSettings):
         if code == TEST_PLAN.code:  # скрытый тариф для проверки оплаты админом: 1 ⭐ = 1 день
             return TEST_PLAN
         return next((p for p in self.plan_list if p.code == code), None)
+
+    @cached_property
+    def weights(self) -> dict[str, float]:
+        out = {}
+        for chunk in self.node_weights.split(","):
+            if ":" in chunk:
+                name, w = chunk.rsplit(":", 1)
+                out[name.strip()] = max(0.1, float(w))
+        return out
 
     @property
     def crypto_enabled(self) -> bool:
