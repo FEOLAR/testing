@@ -61,7 +61,13 @@ async def profile(cb: CallbackQuery):
 
 @router.callback_query(F.data == "howto")
 async def howto(cb: CallbackQuery):
-    await ui.show(cb, texts.HOWTO, reply_markup=kb.back("profile"), disable_web_page_preview=True)
+    await ui.show(cb, texts.HOWTO, reply_markup=kb.howto(), disable_web_page_preview=True)
+    await cb.answer()
+
+
+@router.callback_query(F.data == "appstore_help")
+async def appstore_help(cb: CallbackQuery):
+    await ui.show(cb, texts.APPSTORE_HELP, reply_markup=kb.back("howto"), disable_web_page_preview=True)
     await cb.answer()
 
 

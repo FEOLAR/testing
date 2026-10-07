@@ -4,25 +4,33 @@ from .config import settings
 
 
 def main_menu(show_trial: bool) -> M:
-    rows = [
-        [B(text="💳 Купить / продлить", callback_data="buy")],
-        [B(text="👤 Моя подписка", callback_data="profile"), B(text="📲 Инструкция", callback_data="howto")],
+    rows = []
+    if show_trial and settings.trial_days > 0:
+        rows.append([B(text=f"🎁 Попробовать {settings.trial_days} дня бесплатно", callback_data="trial")])
+    if settings.miniapp_url:
+        rows.append([B(text="📱 Открыть приложение", web_app=WebAppInfo(url=settings.miniapp_url))])
+    rows += [
+        [B(text="👤 Моя подписка", callback_data="profile")],
+        [B(text="💳 Купить / продлить", callback_data="buy"), B(text="📲 Инструкция", callback_data="howto")],
         [B(text="🔌 VPN сам отключается", callback_data="disconnect_help")],
     ]
-    if settings.miniapp_url:
-        rows.insert(0, [B(text="📱 Открыть приложение", web_app=WebAppInfo(url=settings.miniapp_url))])
-    if show_trial and settings.trial_days > 0:
-        rows.insert(0, [B(text=f"🎁 Попробовать {settings.trial_days} дня бесплатно", callback_data="trial")])
-    if settings.miniapp_url:
-        rows.append([B(text="ℹ️ О сервисе", url=settings.miniapp_url.rstrip("/") + "/info")])
-    row = []
     if settings.referral_bonus_days > 0:
-        row.append(B(text="👥 Пригласить друга", callback_data="ref"))
+        rows.append([B(text="👥 Пригласить друга", callback_data="ref")])
+    row = []
+    if settings.miniapp_url:
+        row.append(B(text="ℹ️ О сервисе", url=settings.miniapp_url.rstrip("/") + "/info"))
     if settings.support_username:
         row.append(B(text="💬 Поддержка", url=f"https://t.me/{settings.support_username}"))
     if row:
         rows.append(row)
     return M(inline_keyboard=rows)
+
+
+def howto() -> M:
+    return M(inline_keyboard=[
+        [B(text="🍏 Happ недоступен в App Store", callback_data="appstore_help")],
+        [B(text="⬅️ Назад", callback_data="menu")],
+    ])
 
 
 def back(to: str = "menu") -> M:

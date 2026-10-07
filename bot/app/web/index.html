@@ -265,21 +265,28 @@ const DL = {
   hiddify: u => 'hiddify://import/' + u + '#' + encodeURIComponent(S.me.brand),
   streisand: u => 'streisand://import/' + u + '#' + encodeURIComponent(S.me.brand),
 };
+const REGION_NOTE = `<details class="small" style="margin-top:8px"><summary><b>«Недоступно в вашей стране»?</b> Смени регион App Store</summary>
+  <ol style="padding-left:18px;margin:8px 0 0">
+    <li>Настройки → твоё имя → <b>Медиаматериалы и покупки</b> → Просмотреть → <b>Страна или регион</b> → Изменить.</li>
+    <li>Выбери другую страну (например, Казахстан или США), прими условия, способ оплаты — <b>«Нет»</b>, адрес — любой в этой стране.</li>
+    <li>Открой App Store и скачай Happ. Регион потом можно вернуть — Happ останется, но обновления приходят только с другим регионом.</li>
+  </ol><div class="muted" style="margin-top:6px">Не даёт сменить (активные подписки или остаток на балансе)? Напиши в поддержку — поможем.</div></details>`;
+const APK_NOTE = `<div class="small" style="margin-top:6px">Подходит для любых Android, в том числе <b>Huawei и Honor</b> без Google Play. Открой скачанный файл <b>Happ.apk</b> → разреши «Установку из этого источника» → «Установить».</div>`;
 const APPS = {
   ios: [
-    {id: 'happ', name: 'Happ', rec: true, url: 'https://apps.apple.com/app/happ-proxy-utility/id6504287215'},
-    {id: 'streisand', name: 'Streisand', url: 'https://apps.apple.com/app/streisand/id6450534064'},
+    {id: 'happ', name: 'Happ', rec: true, url: 'https://apps.apple.com/app/happ-proxy-utility/id6504287215', note: REGION_NOTE},
+    {id: 'streisand', name: 'Streisand', url: 'https://apps.apple.com/app/streisand/id6450534064', note: REGION_NOTE},
   ],
   android: [
-    {id: 'happ', name: 'Happ', rec: true, url: 'https://play.google.com/store/apps/details?id=com.happproxy'},
-    {id: 'hiddify', name: 'Hiddify', url: 'https://play.google.com/store/apps/details?id=app.hiddify.com'},
+    {id: 'happ', name: 'Happ', rec: true, url: 'https://github.com/Happ-proxy/happ-android/releases/latest/download/Happ.apk', note: APK_NOTE},
+    {id: 'hiddify', name: 'Hiddify', url: 'https://github.com/hiddify/hiddify-app/releases'},
   ],
   windows: [
     {id: 'happ', name: 'Happ', rec: true, url: 'https://github.com/Happ-proxy/happ-desktop/releases'},
     {id: 'hiddify', name: 'Hiddify', url: 'https://github.com/hiddify/hiddify-app/releases'},
   ],
   macos: [
-    {id: 'happ', name: 'Happ', rec: true, url: 'https://apps.apple.com/app/happ-proxy-utility/id6504287215'},
+    {id: 'happ', name: 'Happ', rec: true, url: 'https://apps.apple.com/app/happ-proxy-utility/id6504287215', note: REGION_NOTE},
     {id: 'hiddify', name: 'Hiddify', url: 'https://github.com/hiddify/hiddify-app/releases'},
   ],
   linux: [
@@ -439,7 +446,7 @@ function setupBlock() {
     <div class="apps">${apps.map(a => `<button class="app ${a.id === S.app ? 'on' : ''}" data-app="${a.id}">${a.name}${a.rec ? '<span class="tag">★ Рекомендуем</span>' : '<span class="tag" style="color:var(--dim)">&nbsp;</span>'}</button>`).join('')}</div>
     <div class="steps">
       <div class="step"><div class="num">1</div><div><div class="h3">Установи приложение</div>
-        <div class="muted small">Скачай ${esc(app.name)} для ${pname}.${app.id !== 'happ' ? ' Разделение трафика (RU-сайты и игры напрямую) работает только в Happ.' : ''}</div>
+        <div class="muted small">Скачай ${esc(app.name)} для ${pname}.${app.id !== 'happ' ? ' Разделение трафика (RU-сайты и игры напрямую) работает только в Happ.' : ''}</div>${app.note || ''}
         <button class="btn sec sm" id="instBtn">${ic('down',16)} Скачать ${esc(app.name)}</button></div></div>
       <div class="step"><div class="num">2</div><div><div class="h3">Добавь подписку</div>
         <div class="muted small">Нажми кнопку — приложение откроется, и подписка добавится сама. Не сработало — скопируй ссылку и в приложении нажми «+» → «Из буфера».</div>

@@ -94,16 +94,32 @@ def trial_ok(user) -> str:
 
 HOWTO = (
     "📲 <b>Как подключиться</b>\n\n"
-    "<b>1. Установи приложение</b>\n"
-    "• iPhone / iPad / Mac: <a href='https://apps.apple.com/app/happ-proxy-utility/id6504287215'>Happ</a> "
-    "или <a href='https://apps.apple.com/app/streisand/id6450534064'>Streisand</a>\n"
-    "• Android: <a href='https://play.google.com/store/apps/details?id=com.happproxy'>Happ</a> "
-    "или <a href='https://github.com/hiddify/hiddify-app/releases'>Hiddify</a>\n"
-    "• Windows / Linux: <a href='https://github.com/hiddify/hiddify-app/releases'>Hiddify</a>\n\n"
+    "<b>1. Установи Happ</b>\n"
+    "🍏 <b>iPhone / iPad / Mac</b> — <a href='https://apps.apple.com/app/happ-proxy-utility/id6504287215'>Happ в App Store</a>. "
+    "Пишет «недоступно в вашей стране»? Нажми кнопку ниже — расскажем, как сменить регион.\n"
+    "🤖 <b>Android, Huawei, Honor</b> — <a href='https://github.com/Happ-proxy/happ-android/releases/latest/download/Happ.apk'>скачай Happ.apk</a>, открой файл → "
+    "разреши «Установку из этого источника» → «Установить».\n"
+    "💻 <b>Windows</b> — <a href='https://github.com/Happ-proxy/happ-desktop/releases'>Happ для Windows</a>\n\n"
     "<b>2. Скопируй ссылку</b> из раздела «👤 Моя подписка» (нажми на неё).\n\n"
-    "<b>3. Добавь подписку:</b> в приложении нажми «+» → «Импорт из буфера обмена».\n\n"
-    "<b>4. Подключись</b> — выбери любой сервер и нажми кнопку включения.\n\n"
-    "Не работает? Обнови подписку в приложении или напиши в поддержку."
+    "<b>3. Добавь подписку:</b> в Happ нажми «+» → «Вставить из буфера».\n\n"
+    "<b>4. Подключись</b> — нажми большую кнопку включения. На телефоне выбирай сервер с пометкой 📱.\n\n"
+    "Не работает? Обнови подписку в Happ (потяни список вниз) или напиши в поддержку."
+)
+
+
+APPSTORE_HELP = (
+    "🍏 <b>Happ недоступен в App Store?</b>\n\n"
+    "В российском App Store Happ удалили — его можно скачать, сменив регион Apple ID.\n\n"
+    "1. Настройки → твоё имя → <b>Медиаматериалы и покупки</b> → «Просмотреть» → "
+    "<b>Страна или регион</b> → «Изменить страну или регион».\n"
+    "2. Выбери другую страну — например, <b>Казахстан</b> или <b>США</b> — и прими условия.\n"
+    "3. Способ оплаты — <b>«Нет»</b>. Адрес и телефон — любые в этой стране "
+    "(подойдёт адрес любого отеля из поиска).\n"
+    "4. Открой <a href='https://apps.apple.com/app/happ-proxy-utility/id6504287215'>Happ в App Store</a> и установи.\n\n"
+    "Регион потом можно вернуть на Россию — Happ останется на телефоне, "
+    "но обновления будут приходить, только пока выбран другой регион.\n\n"
+    "⚠️ Сменить регион не получится, если есть активные подписки Apple или остаток денег на балансе Apple ID — "
+    "сначала отмени подписки / потрать остаток. Не получается — напиши в поддержку, поможем."
 )
 
 
