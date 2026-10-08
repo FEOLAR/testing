@@ -1,4 +1,4 @@
-from aiogram.types import InlineKeyboardButton as B, InlineKeyboardMarkup as M, WebAppInfo
+from aiogram.types import InlineKeyboardButton as B, InlineKeyboardMarkup as M, KeyboardButton, ReplyKeyboardMarkup, WebAppInfo
 
 from .config import settings
 from .emoji import FALLBACK, button_icon
@@ -42,6 +42,14 @@ def main_menu(show_trial: bool) -> M:
         row.append(btn("support", "Поддержка", callback_data="support"))
     rows.append(row)
     return M(inline_keyboard=rows)
+
+
+MENU_TEXT = "📋 Меню"
+
+
+def reply_menu() -> ReplyKeyboardMarkup:
+    """Постоянная кнопка «Меню» под полем ввода."""
+    return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text=MENU_TEXT)]], resize_keyboard=True, is_persistent=True)
 
 
 def open_app() -> M:

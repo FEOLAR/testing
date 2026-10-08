@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     brand_name: str = "VPN"
     miniapp_url: str = ""
     webapp_port: int = 8080
+    # Надпись на кнопке мини-аппа слева от поля ввода
+    menu_button_text: str = "Открыть"
 
     panel_url: str = "http://remnawave:3000"
     panel_token: str

@@ -34,11 +34,13 @@ async def start(message: Message, command: CommandObject):
         ref = int(command.args[4:])
     user, _ = await get_or_create_user(message.from_user.id, message.from_user.username,
                                        message.from_user.first_name, referrer_id=ref)
+    await message.answer(texts.MENU_HINT, reply_markup=kb.reply_menu())  # постоянная кнопка «Меню» внизу
     await ui.send_welcome(message, texts.welcome(message.from_user.first_name),
                           kb.main_menu(show_trial=not user.trial_used))
 
 
 @router.message(Command("menu"))
+@router.message(F.text.in_({kb.MENU_TEXT, "Меню", "меню"}))
 async def menu_cmd(message: Message):
     user = await load_user(message.from_user)
     await ui.send_welcome(message, texts.welcome(message.from_user.first_name),

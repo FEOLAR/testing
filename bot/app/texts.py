@@ -20,6 +20,9 @@ def days_left(dt: datetime | None) -> int:
     return max(0, (dt - datetime.now(timezone.utc)).days)
 
 
+MENU_HINT = "👇 Кнопка «Меню» внизу всегда вернёт тебя на главный экран, а «Открыть» слева — откроет приложение."
+
+
 def welcome(name: str | None) -> str:
     return (
         f"{e('logo')} <b>Привет, {escape(name or 'друг')}! Это {escape(settings.brand_name)}</b>\n\n"
