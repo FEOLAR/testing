@@ -47,6 +47,31 @@ def about() -> str:
     )
 
 
+def service() -> str:
+    cheapest = min(round(p.rub / (p.days / 30)) for p in settings.plan_list)
+    return (
+        f"{e('logo')} <b>{escape(settings.brand_name)}</b>\n"
+        "Быстрый и удобный VPN для телефона и компьютера.\n\n"
+        f"{e('zap')} <b>Скорость</b> — серверы в Европе, приложение само выбирает свободный\n"
+        f"{e('lock')} <b>Безопасность</b> — соединение шифруется, даже в общественном Wi‑Fi\n"
+        f"{e('globe')} <b>Без лишних настроек</b> — российские сайты, банки и игры работают как обычно\n"
+        f"{e('phone')} <b>До {settings.device_limit} устройств</b> — iPhone, Android, Windows, macOS\n"
+        f"{e('card')} <b>От {cheapest} ₽ в месяц</b> — оплата Telegram Stars или криптовалютой\n"
+        f"{e('support')} <b>Поддержка</b> — отвечаем прямо в Telegram\n\n"
+        "Тарифы, инструкции и ответы на частые вопросы — на нашем сайте."
+    )
+
+
+def support() -> str:
+    return (
+        f"{e('support')} <b>Поддержка</b>\n\n"
+        "Не получается подключиться или есть вопрос по оплате? Напиши нам — поможем разобраться.\n\n"
+        "Чтобы ответили быстрее, сразу опиши:\n"
+        f"{e('phone')} какое у тебя устройство (iPhone, Android, компьютер)\n"
+        f"{e('info')} что именно не работает — можно приложить скриншот"
+    )
+
+
 def profile(user, active: bool) -> str:
     lines = [f"{e('user')} <b>Моя подписка</b>\n"]
     if active:

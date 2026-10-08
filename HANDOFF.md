@@ -1,4 +1,4 @@
-# WhiteHoleVPN — выжимка проекта (контрольная точка 08.10.2026, v24)
+# WhiteHoleVPN — выжимка проекта (контрольная точка 08.10.2026, v25)
 
 > Вставь этот файл в начало нового диалога. Отвечать по-русски, команды — готовые к копированию, однострочные
 > (у пользователя Windows PowerShell + SSH; многострочные вставки ломаются из-за bracketed paste).
@@ -12,7 +12,7 @@ VPN-сервис **WhiteHoleVPN** (раньше GalacticVPN), продажа ч�
 - `bot/app/` — бот (aiogram 3, aiohttp, SQLAlchemy async + PostgreSQL, Redis, docker compose).
 - `infra/add-node.sh` — установка новой ноды (Docker, remnanode NODE_PORT 2222, sub-proxy Caddy :9443, ufw); `bash add-node.sh test` — тест TLS.
 - `infra/bridge-nodes.sh` — мост в РФ: проверка нод, HAProxy (balance source) 443/8443, Caddy для подписки.
-- Последний архив: **whitehole-bot-v24.zip**.
+- Последний архив: **whitehole-bot-v25.zip**.
 
 ### Деплой бота (на сервере панели)
 ```
@@ -52,6 +52,13 @@ docker logs --tail 30 vpn-bot
 - Кнопки: единый стиль без цветов (`btn(icon, text)`), иконки из фирменного пака **`EMOJI_PACK=WhiteHoleVPN_by_TgEmodziBot`** (по умолчанию). Иконки сопоставляются по привязанному эмодзи; ручная привязка `EMOJI_MAP=bot=12,...` (номера из `/emoji WhiteHoleVPN_by_TgEmodziBot`). Что не нашлось — из своего пака бота; `/icons` показывает источник каждой.
 - В свой пак добавлены иконки game, bot, apple.
 - Совет: хосты «Мост — 📱/💻» в панели переименовать в «Резерв — 📱/💻».
+
+### v25
+- Баннеры разделов `app/web/screens/*.jpg` (tariffs, about, howto, partner, referral, support): `ui.show(..., photo="tariffs")` меняет картинку в том же сообщении (edit_media), возврат в меню — снова welcome.jpg. Заменить баннер = файл с тем же именем + пересборка.
+- Меню: Попробовать (зелёная) / Открыть приложение (синяя) / Что умеет бот? / Моя подписка / Купить|Инструкция / Пригласить друга / О сервисе|Поддержка. Цветные заливки возвращены (`btn(icon, text, style)`).
+- «О сервисе» и «Поддержка» — экраны в боте (callback `service`, `support`) с баннером; на «О сервисе» кнопка «Перейти на сайт» → /miniapp/info.
+- «Пригласить друга» — баннер №4 «Партнёрская программа» (по просьбе; есть ещё referral.jpg «Реферальная программа»).
+- `SUPPORT_USERNAME` — юзернейм поддержки (с @ или без); число трактуется как ID (tg://user?id=, работает не у всех).
 
 ### Цены
 `nano /root/vpn-shop/bot/.env` → строка `PLANS=дни:рубли:звёзды,...` → сохранить → `cd /root/vpn-shop/bot && docker compose up -d --build`.

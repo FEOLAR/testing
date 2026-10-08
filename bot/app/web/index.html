@@ -438,7 +438,7 @@ function renderHome() {
   on('mDevices', () => go('devices'));
   on('mLink', () => copy(s.sub_url, 'Ссылка-подписка скопирована'));
   on('mHelp', () => { const el = $('#help'); el.querySelector('details').open = true; el.scrollIntoView({behavior: 'smooth'}); });
-  on('supBtn', () => openTg('https://t.me/' + me.support));
+  on('supBtn', () => openTg(me.support_url));
   bindSetup();
   if (!S.devices && st.key !== 'none') loadDevices(true);
 }
@@ -681,7 +681,7 @@ function renderAdminUser() {
 
 // ---------- старт ----------
 $('#hdrCopy').onclick = () => { if (S.me && S.me.sub.sub_url) copy(S.me.sub.sub_url, 'Ссылка-подписка скопирована'); else toast('Сначала оформи подписку'); };
-$('#hdrSupport').onclick = () => { if (S.me && S.me.support) openTg('https://t.me/' + S.me.support); };
+$('#hdrSupport').onclick = () => { if (S.me && S.me.support) openTg(S.me.support_url); };
 
 async function loadMe(quiet) {
   try {

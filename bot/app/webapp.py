@@ -17,6 +17,7 @@ from aiohttp import web
 from sqlalchemy import func, or_, select
 
 from .config import settings
+from .keyboards import support_url
 from .db import Payment, Session, User
 from .remnawave import panel, parse_dt
 from .services import (activate_trial, admin_give, check_crypto_payment, collect_stats,
@@ -139,6 +140,7 @@ async def me(request: web.Request) -> web.Response:
         "is_admin": tg.id in settings.admins,
         "brand": settings.brand_name,
         "support": settings.support_username,
+        "support_url": support_url() if settings.support_username else "",
         "bot_username": bot_username,
         "sub": panel_sub(pu, user),
         "trial": {"available": not user.trial_used and settings.trial_days > 0, "days": settings.trial_days},
@@ -309,7 +311,7 @@ def _info_page(bot_username: str) -> str:
                     f'<div class="m">{per_month} ₽ в месяц</div></div>'
                     f'<div class="p">{p.rub} ₽<div class="m">{p.stars} ⭐</div></div></div>')
     trial = (f"Новым пользователям — {settings.trial_days} дн. бесплатно." if settings.trial_days > 0 else "")
-    support = (f'<div class="h2">Поддержка</div><a class="btn sec" href="https://t.me/{escape(settings.support_username)}">'
+    support = (f'<div class="h2">Поддержка</div><a class="btn sec" href="{escape(support_url(), quote=True)}">'
                f'💬 Написать в поддержку</a>' if settings.support_username else "")
     tpl = Template((WEB_DIR / "info.html").read_text(encoding="utf-8"))
     return tpl.safe_substitute(brand=escape(brand), brand_html=brand_html, bot=escape(bot_username or ""),

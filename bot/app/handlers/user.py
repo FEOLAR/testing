@@ -61,7 +61,7 @@ async def profile(cb: CallbackQuery):
 
 @router.callback_query(F.data == "howto")
 async def howto(cb: CallbackQuery):
-    await ui.show(cb, texts.howto(), reply_markup=kb.howto(), disable_web_page_preview=True)
+    await ui.show(cb, texts.howto(), reply_markup=kb.howto(), photo="howto", disable_web_page_preview=True)
     await cb.answer()
 
 
@@ -71,15 +71,27 @@ async def about(cb: CallbackQuery):
     await cb.answer()
 
 
+@router.callback_query(F.data == "service")
+async def service(cb: CallbackQuery):
+    await ui.show(cb, texts.service(), reply_markup=kb.service(), photo="about")
+    await cb.answer()
+
+
+@router.callback_query(F.data == "support")
+async def support(cb: CallbackQuery):
+    await ui.show(cb, texts.support(), reply_markup=kb.support(), photo="support")
+    await cb.answer()
+
+
 @router.callback_query(F.data == "appstore_help")
 async def appstore_help(cb: CallbackQuery):
-    await ui.show(cb, texts.appstore_help(), reply_markup=kb.back("howto"), disable_web_page_preview=True)
+    await ui.show(cb, texts.appstore_help(), reply_markup=kb.back("howto"), photo="howto", disable_web_page_preview=True)
     await cb.answer()
 
 
 @router.callback_query(F.data == "disconnect_help")
 async def disconnect_help(cb: CallbackQuery):
-    await ui.show(cb, texts.disconnect_help(), reply_markup=kb.back("menu"))
+    await ui.show(cb, texts.disconnect_help(), reply_markup=kb.back("menu"), photo="howto")
     await cb.answer()
 
 
@@ -107,7 +119,7 @@ async def referral(cb: CallbackQuery):
         invited = await s.scalar(select(func.count()).where(User.referrer_id == cb.from_user.id))
         paid = await s.scalar(select(func.count()).where(User.referrer_id == cb.from_user.id,
                                                          User.referral_rewarded.is_(True)))
-    await ui.show(cb, texts.referral(link, invited or 0, paid or 0), reply_markup=kb.back())
+    await ui.show(cb, texts.referral(link, invited or 0, paid or 0), reply_markup=kb.back(), photo="partner")
     await cb.answer()
 
 
