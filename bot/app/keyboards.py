@@ -4,14 +4,13 @@ from .config import settings
 from .emoji import FALLBACK, button_icon
 
 
-def btn(icon: str | None, text: str, style: str | None = None, **kw) -> B:
-    """Кнопка с фирменной иконкой из пака; если иконок нет — с обычным эмодзи в тексте.
-    style: 'primary' (синяя), 'success' (зелёная), 'danger' (красная) или None."""
-    extra = {"style": style} if style else {}
-    cid = button_icon(icon) if icon else None
+def btn(icon: str, text: str, **kw) -> B:
+    """Все кнопки бота в одном стиле: иконка из фирменного пака + текст, без цветной заливки.
+    Если иконки недоступны — обычный эмодзи в начале текста."""
+    cid = button_icon(icon)
     if cid:
-        return B(text=text, icon_custom_emoji_id=cid, **extra, **kw)
-    return B(text=f"{FALLBACK[icon]} {text}" if icon else text, **extra, **kw)
+        return B(text=text, icon_custom_emoji_id=cid, **kw)
+    return B(text=f"{FALLBACK[icon]} {text}", **kw)
 
 
 def _back(to: str = "menu", text: str = "Назад") -> B:
@@ -21,13 +20,13 @@ def _back(to: str = "menu", text: str = "Назад") -> B:
 def main_menu(show_trial: bool) -> M:
     rows = []
     if show_trial and settings.trial_days > 0:
-        rows.append([btn("gift", f"Попробовать {settings.trial_days} дня бесплатно", "success", callback_data="trial")])
+        rows.append([btn("gift", f"Попробовать {settings.trial_days} дня бесплатно", callback_data="trial")])
     if settings.miniapp_url:
-        rows.append([btn("app", "Открыть приложение", "primary", web_app=WebAppInfo(url=settings.miniapp_url))])
+        rows.append([btn("app", "Открыть приложение", web_app=WebAppInfo(url=settings.miniapp_url))])
     rows += [
         [btn("user", "Моя подписка", callback_data="profile")],
         [btn("card", "Купить / продлить", callback_data="buy"), btn("book", "Инструкция", callback_data="howto")],
-        [btn("plug", "VPN сам отключается", callback_data="disconnect_help")],
+        [btn("bot", "Что умеет бот?", callback_data="about")],
     ]
     if settings.referral_bonus_days > 0:
         rows.append([btn("friends", "Пригласить друга", callback_data="ref")])
@@ -43,7 +42,7 @@ def main_menu(show_trial: bool) -> M:
 
 def howto() -> M:
     return M(inline_keyboard=[
-        [btn(None, "🍏 Happ недоступен в App Store", callback_data="appstore_help")],
+        [btn("apple", "Happ не находится в App Store", callback_data="appstore_help")],
         [_back()],
     ])
 
@@ -69,7 +68,7 @@ def methods(plan_code: str) -> M:
 
 def crypto_pay(url: str, payment_id: int) -> M:
     return M(inline_keyboard=[
-        [btn("card", "Оплатить", "success", url=url)],
+        [btn("card", "Оплатить", url=url)],
         [btn("refresh", "Я оплатил — проверить", callback_data=f"check:{payment_id}")],
         [_back("menu", "В меню")],
     ])
@@ -78,15 +77,14 @@ def crypto_pay(url: str, payment_id: int) -> M:
 def profile(active: bool) -> M:
     rows = []
     if active and settings.miniapp_url:
-        rows.append([btn("app", "Открыть приложение", "primary", web_app=WebAppInfo(url=settings.miniapp_url))])
+        rows.append([btn("app", "Открыть приложение", web_app=WebAppInfo(url=settings.miniapp_url))])
     if active:
         rows.append([btn("book", "Инструкция", callback_data="howto")])
-        rows.append([btn("plug", "VPN сам отключается", callback_data="disconnect_help")])
         rows.append([btn("refresh", "Сбросить устройства", callback_data="reset_hwid")])
-    rows.append([btn("card", "Продлить", "success" if not active else None, callback_data="buy")])
+    rows.append([btn("card", "Продлить", callback_data="buy")])
     rows.append([_back()])
     return M(inline_keyboard=rows)
 
 
 def renew() -> M:
-    return M(inline_keyboard=[[btn("card", "Продлить", "success", callback_data="buy")]])
+    return M(inline_keyboard=[[btn("card", "Продлить", callback_data="buy")]])

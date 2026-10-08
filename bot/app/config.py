@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     node_weights: str = ""
     # Фирменные иконки на кнопках меню (нужен Telegram Premium у владельца бота). false — обычные эмодзи.
     button_icons: bool = True
+    # Фирменный пак эмодзи для кнопок и текстов (имя или ссылка t.me/addemoji/...). Пусто — свой пак бота.
+    emoji_pack: str = "WhiteHoleVPN_by_TgEmodziBot"
+    # Ручное соответствие иконок номерам в паке: "logo=1,zap=5" (номера показывает /emoji ИМЯ_ПАКА)
+    emoji_map: str = ""
 
     # Ссылка на Happ в российском App Store, когда он там есть (например, «Happ - Proxy Utility+»).
     # Пусто — в инструкции для iPhone только обычный Happ + смена региона.

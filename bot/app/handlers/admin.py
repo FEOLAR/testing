@@ -387,6 +387,8 @@ async def icons(message: Message, bot: Bot):
         if command_args[0] == "reload":
             await emoji.setup(bot)
     loaded = len(emoji._ids)
-    rows = [f"{emoji.e(n)} <code>{n}</code>" for n, _ in emoji.ICONS]
-    await message.answer(f"Иконок загружено: {loaded}/{len(emoji.ICONS)} (/icons reload — перезагрузить)\n\n"
-                         + "\n".join(rows))
+    pack = settings.emoji_pack or "не задан"
+    await message.answer(f"Иконок загружено: {loaded}/{len(emoji.ICONS)} · фирменный пак: {escape(pack)}\n"
+                         "/icons reload — перезагрузить. Если иконка не из пака — задай её номер в .env, "
+                         "например <code>EMOJI_MAP=bot=12,apple=7</code> (номера: <code>/emoji ИМЯ_ПАКА</code>).\n\n"
+                         + emoji.report())

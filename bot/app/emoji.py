@@ -26,10 +26,28 @@ ICONS: list[tuple[str, str]] = [  # (имя файла без .png, обычны
     ("friends", "👥"), ("key", "🔑"), ("ok", "✅"), ("no", "❌"), ("clock", "⏳"),
     ("rocket", "🚀"), ("lock", "🔒"), ("wifi", "📶"), ("refresh", "🔄"), ("crown", "👑"),
     ("settings", "⚙️"), ("bank", "🏦"), ("back", "⬅️"), ("app", "📱"), ("calendar", "📅"),
-    ("trash", "🗑"), ("game", "🎮"),
+    ("trash", "🗑"), ("game", "🎮"), ("bot", "🤖"), ("apple", "🍏"),
 ]
 FALLBACK = dict(ICONS)
 _ids: dict[str, str] = {}
+_source: dict[str, str] = {}   # иконка -> откуда взята: "pack" (EMOJI_PACK) или "own" (свой пак бота)
+_pack_items: list[tuple[str, str]] = []  # (эмодзи-заменитель, custom_emoji_id) из EMOJI_PACK по порядку
+
+# Какие обычные эмодзи считать «той же иконкой» при автоподборе из EMOJI_PACK
+ALIASES: dict[str, tuple[str, ...]] = {
+    "logo": ("🕳", "🌌", "⚫", "🌑", "🪐"), "zap": ("⚡",), "shield": ("🛡",), "globe": ("🌐", "🌍", "🌎", "🌏"),
+    "phone": ("📱", "📲"), "app": ("📱", "📲"), "gift": ("🎁",), "down": ("👇", "⬇"), "card": ("💳",),
+    "coin": ("🪙", "💰", "💵"), "star": ("⭐", "🌟"), "user": ("👤", "🙂"), "book": ("📖", "📚", "📘", "📗"),
+    "plug": ("🔌",), "info": ("ℹ", "❓", "❔"), "support": ("💬", "🆘", "👨‍💻"), "friends": ("👥", "🤝"),
+    "key": ("🔑", "🗝"), "ok": ("✅", "✔"), "no": ("❌", "✖"), "clock": ("⏳", "⏰", "🕐", "⌛"),
+    "rocket": ("🚀",), "lock": ("🔒", "🔐"), "wifi": ("📶", "🛜"), "refresh": ("🔄", "🔃", "♻"),
+    "crown": ("👑",), "settings": ("⚙",), "bank": ("🏦",), "back": ("⬅", "◀", "🔙", "↩"),
+    "calendar": ("📅", "📆", "🗓"), "trash": ("🗑",), "game": ("🎮", "🕹"), "bot": ("🤖",), "apple": ("🍏", "🍎"),
+}
+
+
+def _norm(ch: str) -> str:
+    return (ch or "").replace("\ufe0f", "").strip()
 
 
 def e(name: str) -> str:
@@ -95,9 +113,61 @@ async def setup(bot: Bot) -> None:
         for (icon, _), st in zip(ICONS, pack.stickers):
             if st.custom_emoji_id:
                 _ids[icon] = st.custom_emoji_id
+                _source[icon] = "own"
         log.info("emoji: pack %s ready, %d icons", name, len(_ids))
     except Exception:
         log.exception("emoji: setup failed, using plain emoji")
+    await load_brand_pack(bot)
+
+
+def _manual_map() -> dict[str, int]:
+    out = {}
+    for chunk in settings.emoji_map.replace(" ", "").split(","):
+        if "=" in chunk:
+            name, num = chunk.split("=", 1)
+            if name in FALLBACK and num.isdigit():
+                out[name] = int(num)
+    return out
+
+
+async def load_brand_pack(bot: Bot) -> None:
+    """Подменяет иконки на эмодзи из фирменного пака EMOJI_PACK (например, сделанного через @TgEmodziBot).
+    Иконка подбирается по обычному эмодзи, к которому привязан значок в паке (⚡ → zap и т.д.);
+    точное соответствие можно задать в .env: EMOJI_MAP=zap=3,logo=1 (номера — из /emoji ИМЯ_ПАКА).
+    Что не нашлось — остаётся из своего пака бота (видно в /icons)."""
+    if not settings.emoji_pack:
+        return
+    name = settings.emoji_pack.strip().rstrip("/").split("/")[-1]
+    try:
+        pack = await bot.get_sticker_set(name)
+    except Exception:
+        log.exception("emoji: brand pack %s unavailable", name)
+        return
+    _pack_items[:] = [(st.emoji or "", st.custom_emoji_id) for st in pack.stickers if st.custom_emoji_id]
+    manual, used = _manual_map(), set()
+    for icon, num in manual.items():
+        if 1 <= num <= len(_pack_items):
+            _ids[icon], _source[icon] = _pack_items[num - 1][1], "pack"
+            used.add(num - 1)
+    for icon, fb in ICONS:
+        if icon in manual:
+            continue
+        wanted = {_norm(fb), *(_norm(a) for a in ALIASES.get(icon, ()) if a)}
+        for i, (em, cid) in enumerate(_pack_items):
+            if _norm(em) in wanted:
+                _ids[icon], _source[icon] = cid, "pack"
+                break
+    found = sum(1 for v in _source.values() if v == "pack")
+    log.info("emoji: brand pack %s — %d icons, matched %d of %d", name, len(_pack_items), found, len(ICONS))
+
+
+def report() -> str:
+    """Для /icons: какая иконка откуда."""
+    rows = []
+    for icon, fb in ICONS:
+        src = {"pack": "из пака", "own": "своя (нет в паке)"}.get(_source.get(icon), "обычный эмодзи")
+        rows.append(f"{e(icon)} <code>{icon}</code> — {src}")
+    return "\n".join(rows)
 
 
 # ---------- иконки на кнопках ----------

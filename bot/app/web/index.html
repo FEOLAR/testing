@@ -179,7 +179,7 @@ nav button.on svg{filter:drop-shadow(0 0 6px rgba(255,255,255,.7))}
   <header id="hdr">
     <div class="emblem"></div>
     <div class="brand" id="brand">VPN</div>
-    <div class="tagline">БЫСТРО &nbsp;•&nbsp; БЕЗОПАСНО &nbsp;•&nbsp; СВОБОДНО</div>
+    <div class="tagline">БЫСТРО &nbsp;•&nbsp; НАДЁЖНО &nbsp;•&nbsp; ПРОСТО</div>
     <div class="hdr-btns">
     <button class="icon-btn" id="hdrCopy" title="Скопировать ссылку-подписку"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#e6e9f0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 007.5.5l3-3a5 5 0 00-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 00-7.5-.5l-3 3a5 5 0 007 7l1.7-1.7"/></svg></button>
     <button class="icon-btn" id="hdrSupport" title="Поддержка"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#e6e9f0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg></button>
@@ -379,7 +379,7 @@ function renderHome() {
     html += `<div class="card stats3">
       <div>${ic('cal', 22, '#fff', 1.8)}<div class="v">${active && l ? esc(l) : '—'}</div><div class="k">Осталось</div></div>
       <div>${ic('swap', 22, '#fff', 1.8)}<div class="v">${bytes(used)}${limit ? ' / ' + bytes(limit) : ''}</div><div class="k">Трафик</div></div>
-      <div>${ic('shield', 22, '#fff', 1.8)}<div class="v">${active ? 'Включена' : 'Выключена'}</div><div class="k">Защита</div></div>
+      <div>${ic('shield', 22, '#fff', 1.8)}<div class="v">${active ? 'Включена' : 'Выключена'}</div><div class="k">Переадресация</div></div>
     </div>`;
   }
 
@@ -399,7 +399,7 @@ function renderHome() {
 
   html += `<div class="card" id="help">
     <details><summary>🔌 VPN сам отключается</summary>
-      <p class="muted small" style="margin:10px 0 0">Обычно VPN закрывает сам телефон: чтобы освободить память (например, при запуске тяжёлых игр вроде Clash of Clans) или сэкономить батарею. Включи автопереподключение.</p>
+      <p class="muted small" style="margin:10px 0 0">Обычно VPN закрывает сам телефон: чтобы освободить память или сэкономить батарею. Включи автоподключение.</p>
       <p style="margin:12px 0 0;font-weight:700">🍏 iPhone / iPad</p>
       <ol><li>Настройки → Основные → VPN и управление устройством → VPN → ⓘ у Happ → включи <b>«Подключать по запросу»</b>.</li>
       <li>Выключи «Режим энергосбережения».</li><li>Оставь в Happ одну подписку — лишние удали.</li>
@@ -411,7 +411,7 @@ function renderHome() {
     </details>
     <details><summary>🐢 Медленно или не подключается</summary>
       <ol><li>Обнови подписку в приложении (потяни список серверов вниз или кнопка ⟳).</li>
-      <li>Попробуй другой сервер из списка, на телефоне — «📱 🌉 Мост».</li>
+      <li>Попробуй другой сервер из списка.</li>
       <li>Переключись между Wi-Fi и мобильным интернетом.</li>
       <li>Не помогло — напиши в поддержку, приложи скриншот.</li></ol>
     </details>
@@ -455,7 +455,7 @@ function setupBlock() {
     <div class="apps">${apps.map(a => `<button class="app ${a.id === S.app ? 'on' : ''}" data-app="${a.id}">${a.name}${a.rec ? '<span class="tag">★ Рекомендуем</span>' : '<span class="tag" style="color:var(--dim)">&nbsp;</span>'}</button>`).join('')}</div>
     <div class="steps">
       <div class="step"><div class="num">1</div><div><div class="h3">Установи приложение</div>
-        <div class="muted small">Скачай ${esc(app.name)} для ${pname}.${app.id !== 'happ' ? ' Разделение трафика (RU-сайты и игры напрямую) работает только в Happ.' : ''}</div>${appLink(app).note}
+        <div class="muted small">Скачай ${esc(app.name)} для ${pname}.${app.id !== 'happ' ? ' Советуем Happ: в нём российские сайты и игры работают без лишних настроек.' : ''}</div>${appLink(app).note}
         <button class="btn sec sm" id="instBtn">${ic('down',16)} Скачать ${esc(app.name)}</button></div></div>
       <div class="step"><div class="num">2</div><div><div class="h3">Добавь подписку</div>
         <div class="muted small">Нажми кнопку — приложение откроется, и подписка добавится сама. Не сработало — скопируй ссылку и в приложении нажми «+» → «Из буфера».</div>
@@ -605,7 +605,7 @@ function renderRef() {
       <div class="tile ok"><div class="k">Оплатили</div><div class="v big">${r.paid}</div></div>
       <div class="tile acc"><div class="k">Бонус</div><div class="v big">${r.paid * r.bonus_days}д</div></div></div>`;
   $('#refCopy').onclick = () => copy(r.link, 'Ссылка скопирована');
-  $('#refShare').onclick = () => openTg('https://t.me/share/url?url=' + encodeURIComponent(r.link) + '&text=' + encodeURIComponent('Быстрый VPN — российские сайты и игры работают без отключения. Попробуй:'));
+  $('#refShare').onclick = () => openTg('https://t.me/share/url?url=' + encodeURIComponent(r.link) + '&text=' + encodeURIComponent('Быстрый и удобный VPN — попробуй бесплатно:'));
 }
 
 // ---------- АДМИН ----------
