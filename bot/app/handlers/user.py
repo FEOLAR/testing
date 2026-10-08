@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timezone
 
 from aiogram import F, Router
-from aiogram.filters import CommandObject, CommandStart
+from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy import func, select
 
@@ -36,6 +36,20 @@ async def start(message: Message, command: CommandObject):
                                        message.from_user.first_name, referrer_id=ref)
     await ui.send_welcome(message, texts.welcome(message.from_user.first_name),
                           kb.main_menu(show_trial=not user.trial_used))
+
+
+@router.message(Command("menu"))
+async def menu_cmd(message: Message):
+    user = await load_user(message.from_user)
+    await ui.send_welcome(message, texts.welcome(message.from_user.first_name),
+                          kb.main_menu(show_trial=not user.trial_used))
+
+
+@router.message(Command("app"))
+async def app_cmd(message: Message):
+    if not settings.miniapp_url:
+        return await menu_cmd(message)
+    await message.answer("Нажми кнопку, чтобы открыть приложение:", reply_markup=kb.open_app())
 
 
 @router.callback_query(F.data == "menu")

@@ -44,6 +44,10 @@ def main_menu(show_trial: bool) -> M:
     return M(inline_keyboard=rows)
 
 
+def open_app() -> M:
+    return M(inline_keyboard=[[btn("app", "Открыть приложение", "primary", web_app=WebAppInfo(url=settings.miniapp_url))]])
+
+
 def service() -> M:
     rows = []
     if settings.miniapp_url:

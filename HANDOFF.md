@@ -1,4 +1,4 @@
-# WhiteHoleVPN — выжимка проекта (контрольная точка 08.10.2026, v25)
+# WhiteHoleVPN — выжимка проекта (контрольная точка 08.10.2026, v26)
 
 > Вставь этот файл в начало нового диалога. Отвечать по-русски, команды — готовые к копированию, однострочные
 > (у пользователя Windows PowerShell + SSH; многострочные вставки ломаются из-за bracketed paste).
@@ -12,7 +12,7 @@ VPN-сервис **WhiteHoleVPN** (раньше GalacticVPN), продажа ч�
 - `bot/app/` — бот (aiogram 3, aiohttp, SQLAlchemy async + PostgreSQL, Redis, docker compose).
 - `infra/add-node.sh` — установка новой ноды (Docker, remnanode NODE_PORT 2222, sub-proxy Caddy :9443, ufw); `bash add-node.sh test` — тест TLS.
 - `infra/bridge-nodes.sh` — мост в РФ: проверка нод, HAProxy (balance source) 443/8443, Caddy для подписки.
-- Последний архив: **whitehole-bot-v25.zip**.
+- Последний архив: **whitehole-bot-v26.zip**.
 
 ### Деплой бота (на сервере панели)
 ```
@@ -59,6 +59,9 @@ docker logs --tail 30 vpn-bot
 - «О сервисе» и «Поддержка» — экраны в боте (callback `service`, `support`) с баннером; на «О сервисе» кнопка «Перейти на сайт» → /miniapp/info.
 - «Пригласить друга» — баннер №4 «Партнёрская программа» (по просьбе; есть ещё referral.jpg «Реферальная программа»).
 - `SUPPORT_USERNAME` — юзернейм поддержки (с @ или без); число трактуется как ID (tg://user?id=, работает не у всех).
+
+### v26
+- Кнопка «Меню» у поля ввода = список команд: /start, /menu (главное меню), /app (кнопка мини-аппа). Кнопка «Открыть» в профиле бота — Main Mini App в @BotFather.
 
 ### Цены
 `nano /root/vpn-shop/bot/.env` → строка `PLANS=дни:рубли:звёзды,...` → сохранить → `cd /root/vpn-shop/bot && docker compose up -d --build`.

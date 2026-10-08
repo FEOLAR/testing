@@ -6,7 +6,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import BotCommand, ErrorEvent
+from aiogram.types import BotCommand, ErrorEvent, MenuButtonCommands
 
 from .config import settings
 from . import emoji
@@ -51,7 +51,16 @@ async def main() -> None:
                 pass
         return True
 
-    await bot.set_my_commands([BotCommand(command="start", description="Главное меню")])
+    # Кнопка «Меню» слева от поля ввода — список команд (запуск, главное меню, мини-апп)
+    commands = [BotCommand(command="start", description="Запустить бота"),
+                BotCommand(command="menu", description="Главное меню")]
+    if settings.miniapp_url:
+        commands.append(BotCommand(command="app", description="Открыть приложение"))
+    await bot.set_my_commands(commands)
+    try:
+        await bot.set_chat_menu_button(menu_button=MenuButtonCommands())
+    except Exception:
+        log.warning("cannot set menu button", exc_info=True)
     emoji_task = asyncio.create_task(emoji.setup(bot))  # фирменные эмодзи грузятся в фоне, не задерживая старт
 
     sched = setup_scheduler(bot)
