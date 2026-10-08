@@ -1,4 +1,4 @@
-# WhiteHoleVPN — выжимка проекта (контрольная точка 07.10.2026, v22)
+# WhiteHoleVPN — выжимка проекта (контрольная точка 08.10.2026, v23)
 
 > Вставь этот файл в начало нового диалога. Отвечать по-русски, команды — готовые к копированию, однострочные
 > (у пользователя Windows PowerShell + SSH; многострочные вставки ломаются из-за bracketed paste).
@@ -12,7 +12,7 @@ VPN-сервис **WhiteHoleVPN** (раньше GalacticVPN), продажа ч�
 - `bot/app/` — бот (aiogram 3, aiohttp, SQLAlchemy async + PostgreSQL, Redis, docker compose).
 - `infra/add-node.sh` — установка новой ноды (Docker, remnanode NODE_PORT 2222, sub-proxy Caddy :9443, ufw); `bash add-node.sh test` — тест TLS.
 - `infra/bridge-nodes.sh` — мост в РФ: проверка нод, HAProxy (balance source) 443/8443, Caddy для подписки.
-- Последний архив: **whitehole-bot-v22.zip**.
+- Последний архив: **whitehole-bot-v23.zip**.
 
 ### Деплой бота (на сервере панели)
 ```
@@ -42,9 +42,12 @@ docker logs --tail 30 vpn-bot
 на лёгкий профиль Happ без geoip/geosite (только domain:ru/su/рф + список доменов, DNS Cloudflare DoH + Яндекс),
 телефонам — TCP+Vision (сервер «📱»). Подтверждено конфигом с iPhone: geo нет, flow vision есть.
 
+## 4а. Игры: высокий пинг (08.10.2026)
+Лёгкий routing-профиль слал игровые серверы Valve (по IP) через VPN. В профиль Happ (заголовок `routing` в панели) добавлены DirectSites Steam/Valve и DirectIp сетей Valve AS32590 (155.133.224.0/19, 162.254.192.0/21, 185.25.180.0/22, 146.66.152.0/21 и др.). Клиентам нужно обновить подписку.
+
 ## 5. Бот — функции
 - Приветствие: фото чёрной дыры (`app/web/welcome.jpg`, заменить файлом и пересобрать) + подпись; экраны меняют подпись под фото (`app/ui.py`).
-- **Фирменные премиум-эмодзи**: `app/emoji.py` — при старте бот сам создаёт пак `whicons_by_WhiteHoleVPNbot` из PNG в `app/web/emoji/` (Lucide, ISC), `e('zap')` в текстах. Работает благодаря Telegram Premium владельца бота (правило Bot API) — **Premium надо продлевать**, иначе будут обычные эмодзи. Порядок `ICONS` только дописывать в конец. Команды `/icons`, `/icons reload`, `/emoji <пак>`, `/emoji_ids`, `/emoji_mypack`.
+- **Фирменные премиум-эмодзи**: `app/emoji.py` — при старте бот сам создаёт пак `whicons_by_WhiteHoleVPNbot` из PNG в `app/web/emoji/` (Lucide, ISC), `e('zap')` в текстах. Работает благодаря Telegram Premium владельца бота (правило Bot API) — **Premium надо продлевать**, иначе будут обычные эмодзи. Порядок `ICONS` только дописывать в конец. Команды `/preview текст` (метки `:zap:` → эмодзи пака, потом ответить `/broadcast`), `/icons`, `/icons reload`, `/emoji <пак>`, `/emoji_ids`, `/emoji_mypack`.
 - **Иконки на кнопках (v22)**: `keyboards.btn(icon, text, style)` ставит `icon_custom_emoji_id` из пака + `style` (primary/success). Если Telegram отклонит иконки (нет Premium) — `emoji.ButtonIconsGuard` повторяет запрос без них и выключает до перезапуска. Выключить вручную: `BUTTON_ICONS=false`. Работает и на старом aiogram (поля проходят как extra).
 - Меню (v21): Открыть приложение / Моя подписка / Купить|Инструкция / VPN сам отключается / Пригласить друга / О сервисе|Поддержка (+ «Попробовать бесплатно» сверху для новых).
 - Инструкция: iPhone — Happ App Store + кнопка «🍏 Happ недоступен в App Store» (смена региона Apple ID); Android/Huawei — APK `https://github.com/Happ-proxy/happ-android/releases/latest/download/Happ.apk`; Windows — happ-desktop. То же в мини-аппе.

@@ -26,7 +26,7 @@ ICONS: list[tuple[str, str]] = [  # (имя файла без .png, обычны
     ("friends", "👥"), ("key", "🔑"), ("ok", "✅"), ("no", "❌"), ("clock", "⏳"),
     ("rocket", "🚀"), ("lock", "🔒"), ("wifi", "📶"), ("refresh", "🔄"), ("crown", "👑"),
     ("settings", "⚙️"), ("bank", "🏦"), ("back", "⬅️"), ("app", "📱"), ("calendar", "📅"),
-    ("trash", "🗑"),
+    ("trash", "🗑"), ("game", "🎮"),
 ]
 FALLBACK = dict(ICONS)
 _ids: dict[str, str] = {}
@@ -37,6 +37,14 @@ def e(name: str) -> str:
     fb = FALLBACK[name]
     cid = _ids.get(name)
     return f'<tg-emoji emoji-id="{cid}">{fb}</tg-emoji>' if cid else fb
+
+
+_TAG = __import__("re").compile(r":([a-z]+):")
+
+
+def render(text: str) -> str:
+    """Заменяет метки :zap:, :logo: и т.п. на эмодзи из пака (неизвестные метки оставляет как есть)."""
+    return _TAG.sub(lambda m: e(m.group(1)) if m.group(1) in FALLBACK else m.group(0), text)
 
 
 def _sticker(name: str, fb: str) -> InputSticker:

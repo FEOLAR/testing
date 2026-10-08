@@ -30,6 +30,7 @@ HELP = (
     "/ban &lt;tg_id&gt; · /unban &lt;tg_id&gt; — отключить/включить VPN\n"
     "/refund &lt;id оплаты&gt; — вернуть звёзды и забрать оплаченные дни\n"
     "/broadcast — ответь этой командой на сообщение, чтобы разослать его всем\n"
+    "/preview текст — текст с метками :zap: :logo: … бот пришлёт его с фирменными эмодзи; ответь на него /broadcast\n"
     "/broadcast_old — то же, но через старого бота (сообщить о переезде)\n"
     "/test_stars — тестовая оплата 1 ⭐ (проверка автовыдачи)\n"
     "/stars_check — найти оплаты Stars, которые бот пропустил (/stars_check apply — выдать их)\n"
@@ -217,6 +218,22 @@ async def stars_check(message: Message, command: CommandObject):
              + (f" → {i['result']}" if apply else "") for i in found]
     tail = "\n\nВыдано." if apply else "\n\nЧтобы выдать дни: /stars_check apply"
     await message.answer("🔎 Оплаты Stars без записи в базе:\n" + "\n".join(lines) + tail)
+
+
+@router.message(Command("preview"))
+async def preview(message: Message):
+    """Текст для рассылки с фирменными эмодзи: /preview, дальше текст (можно в несколько строк, HTML-теги <b>, <i>, <a>).
+    Метки :имя: заменяются на иконки пака, список имён — /icons."""
+    from .. import emoji
+    raw = (message.text or "").split(maxsplit=1)
+    if len(raw) < 2:
+        names = " ".join(f":{n}:" for n, _ in emoji.ICONS)
+        return await message.answer("Напиши <code>/preview</code> и текст. Метки иконок:\n" + escape(names))
+    try:
+        await message.answer(emoji.render(raw[1]), disable_web_page_preview=True)
+    except Exception as err:
+        return await message.answer(f"Не получилось отправить — проверь HTML-теги.\n<code>{escape(str(err))}</code>")
+    await message.answer("👆 Так увидят пользователи. Чтобы разослать — ответь на сообщение выше командой /broadcast")
 
 
 @router.message(Command("broadcast"))
