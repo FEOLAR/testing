@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 from aiogram import F, Router
 from aiogram.filters import Command, CommandObject, CommandStart
+from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy import func, select
 
@@ -28,7 +29,8 @@ async def load_user(tg) -> User:
 
 
 @router.message(CommandStart())
-async def start(message: Message, command: CommandObject):
+async def start(message: Message, command: CommandObject, state: FSMContext):
+    await state.clear()
     ref = None
     if command.args and command.args.startswith("ref_") and command.args[4:].isdigit():
         ref = int(command.args[4:])
@@ -41,21 +43,23 @@ async def start(message: Message, command: CommandObject):
 
 @router.message(Command("menu"))
 @router.message(F.text.in_({kb.MENU_TEXT, "Меню", "меню"}))
-async def menu_cmd(message: Message):
+async def menu_cmd(message: Message, state: FSMContext):
+    await state.clear()
     user = await load_user(message.from_user)
     await ui.send_welcome(message, texts.welcome(message.from_user.first_name),
                           kb.main_menu(show_trial=not user.trial_used))
 
 
 @router.message(Command("app"))
-async def app_cmd(message: Message):
+async def app_cmd(message: Message, state: FSMContext):
     if not settings.miniapp_url:
-        return await menu_cmd(message)
+        return await menu_cmd(message, state)
     await message.answer("Нажми кнопку, чтобы открыть приложение:", reply_markup=kb.open_app())
 
 
 @router.callback_query(F.data == "menu")
-async def menu(cb: CallbackQuery):
+async def menu(cb: CallbackQuery, state: FSMContext):
+    await state.clear()
     user = await load_user(cb.from_user)
     await ui.show_welcome(cb, texts.welcome(cb.from_user.first_name),
                           kb.main_menu(show_trial=not user.trial_used))

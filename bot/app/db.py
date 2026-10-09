@@ -34,6 +34,8 @@ class User(Base):
     expire_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     # Какие напоминания уже отправлены для текущего expire_at: "", "3d", "1d", "exp"
     notice: Mapped[str] = mapped_column(String(8), default="")
+    # Промокод, который пользователь ввёл и ещё не использовал в оплате
+    promo_id: Mapped[int | None] = mapped_column(Integer)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -55,10 +57,22 @@ class Payment(Base):
     status: Mapped[str] = mapped_column(String(16), default="pending", index=True)  # pending|paid|expired|refunded
     external_id: Mapped[str | None] = mapped_column(String(512))  # invoice_id / charge_id
     pay_url: Mapped[str | None] = mapped_column(String(512))
+    promo_id: Mapped[int | None] = mapped_column(Integer, index=True)  # промокод, со скидкой по которому оплачено
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(),
                                                  onupdate=func.now())
+
+
+class PromoCode(Base):
+    __tablename__ = "promo_codes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(32), unique=True)   # всегда в ВЕРХНЕМ регистре
+    percent: Mapped[int] = mapped_column(Integer)                # скидка, %
+    max_uses: Mapped[int] = mapped_column(Integer, default=0)    # лимит активаций, 0 — без лимита
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 # Таблицы, созданные старыми версиями бота, могли остаться без новых колонок и индексов.
@@ -80,6 +94,9 @@ MIGRATIONS = [
     # ID платежей Stars бывают длиннее 128 символов
     "ALTER TABLE payments ALTER COLUMN external_id TYPE VARCHAR(512)",
     "ALTER TABLE users ALTER COLUMN first_name TYPE VARCHAR(256)",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS promo_id INTEGER",
+    "ALTER TABLE payments ADD COLUMN IF NOT EXISTS promo_id INTEGER",
+    "CREATE INDEX IF NOT EXISTS ix_payments_promo_id ON payments (promo_id)",
 ]
 
 

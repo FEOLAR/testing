@@ -29,6 +29,7 @@ HELP = (
     "/give &lt;tg_id&gt; &lt;дни&gt; — выдать/продлить подписку\n"
     "/ban &lt;tg_id&gt; · /unban &lt;tg_id&gt; — отключить/включить VPN\n"
     "/refund &lt;id оплаты&gt; — вернуть звёзды и забрать оплаченные дни\n"
+    "/promo — промокоды; /promo_add КОД СКИДКА% [ЛИМИТ]; /promo_on|/promo_off КОД; /promo_limit КОД N; /promo_uses КОД\n"
     "/broadcast — ответь этой командой на сообщение, чтобы разослать его всем\n"
     "/preview текст — текст с метками :zap: :logo: … бот пришлёт его с фирменными эмодзи; ответь на него /broadcast\n"
     "/broadcast_old — то же, но через старого бота (сообщить о переезде)\n"
@@ -392,3 +393,83 @@ async def icons(message: Message, bot: Bot):
                          "/icons reload — перезагрузить. Если иконка не из пака — задай её номер в .env, "
                          "например <code>EMOJI_MAP=bot=12,apple=7</code> (номера: <code>/emoji ИМЯ_ПАКА</code>).\n\n"
                          + emoji.report())
+
+
+# ---------- промокоды ----------
+
+def _promo_line(p: dict) -> str:
+    limit = f"{p['used']}/{p['max_uses']}" if p["max_uses"] else f"{p['used']} (без лимита)"
+    state = "🟢" if p["active"] and not (p["max_uses"] and p["used"] >= p["max_uses"]) else ("🟡" if p["active"] else "🔴")
+    return f"{state} <code>{escape(p['code'])}</code> −{p['percent']}% · активаций {limit}"
+
+
+@router.message(Command("promo"))
+async def promo_list(message: Message):
+    from .. import promo as promos
+    items = await promos.list_all()
+    body = "\n".join(_promo_line(p) for p in items) or "Промокодов пока нет."
+    await message.answer("🎟 <b>Промокоды</b>\n🟢 работает · 🟡 закончились активации · 🔴 выключен\n\n" + body +
+                         "\n\nСоздать: <code>/promo_add КОД 20 100</code> (скидка 20%, 100 активаций; без лимита — 0)")
+
+
+@router.message(Command("promo_add"))
+async def promo_add(message: Message, command: CommandObject):
+    from .. import promo as promos
+    args = (command.args or "").split()
+    try:
+        code, percent = args[0], int(args[1].rstrip("%"))
+        max_uses = int(args[2]) if len(args) > 2 else 0
+    except (IndexError, ValueError):
+        return await message.answer("Формат: <code>/promo_add КОД СКИДКА [ЛИМИТ]</code>, например <code>/promo_add START20 20 100</code>")
+    promo, error = await promos.create(code, percent, max_uses)
+    if error:
+        return await message.answer(f"❌ {escape(error)}")
+    await message.answer(f"✅ Промокод <code>{promo.code}</code> создан: −{promo.percent}%, "
+                         f"{'лимит ' + str(promo.max_uses) if promo.max_uses else 'без лимита'}.")
+
+
+async def _promo_by_arg(message: Message, command: CommandObject):
+    from .. import promo as promos
+    code = (command.args or "").split()[0] if command.args else ""
+    promo = await promos.find(code) if code else None
+    if not promo:
+        await message.answer("Промокод не найден. Список — /promo")
+    return promo
+
+
+@router.message(Command("promo_on", "promo_off"))
+async def promo_toggle(message: Message, command: CommandObject):
+    from .. import promo as promos
+    promo = await _promo_by_arg(message, command)
+    if promo:
+        on = command.command == "promo_on"
+        await promos.update_promo(promo.id, active=on)
+        await message.answer(f"{'🟢 Включён' if on else '🔴 Выключен'} промокод <code>{promo.code}</code>")
+
+
+@router.message(Command("promo_limit"))
+async def promo_limit(message: Message, command: CommandObject):
+    from .. import promo as promos
+    args = (command.args or "").split()
+    if len(args) < 2 or not args[1].isdigit():
+        return await message.answer("Формат: <code>/promo_limit КОД ЧИСЛО</code> (0 — без лимита)")
+    promo = await _promo_by_arg(message, command)
+    if promo:
+        await promos.update_promo(promo.id, max_uses=int(args[1]))
+        await message.answer(f"Лимит <code>{promo.code}</code>: {int(args[1]) or 'без лимита'}")
+
+
+@router.message(Command("promo_uses"))
+async def promo_uses(message: Message, command: CommandObject):
+    from .. import promo as promos
+    from datetime import datetime
+    promo = await _promo_by_arg(message, command)
+    if not promo:
+        return
+    uses = await promos.uses(promo.id)
+    lines = []
+    for u in uses[:100]:
+        who = f"@{u['username']}" if u["username"] else escape(u["first_name"] or "")
+        when = fmt_date(datetime.fromisoformat(u["paid_at"])) if u["paid_at"] else "—"
+        lines.append(f"• {who} <code>{u['tg_id']}</code> — {u['days']} дн., {escape(u['amount'])}, {when}")
+    await message.answer(f"🎟 <code>{promo.code}</code> использовали: {len(uses)}\n\n" + ("\n".join(lines) or "Пока никто."))

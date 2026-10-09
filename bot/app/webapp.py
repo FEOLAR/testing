@@ -18,6 +18,7 @@ from sqlalchemy import func, or_, select
 
 from .config import settings
 from .keyboards import support_url
+from . import promo as promos
 from .db import Payment, Session, User
 from .remnawave import panel, parse_dt
 from .services import (activate_trial, admin_give, check_crypto_payment, collect_stats,
@@ -128,11 +129,14 @@ async def me(request: web.Request) -> web.Response:
     except Exception:
         log.exception("panel get_user failed")
     base = settings.plan_list[0]
+    promo = await promos.current(user.tg_id)
     plans = []
     for p in settings.plan_list:
         per_month = round(p.rub / (p.days / 30))
-        plans.append({"code": p.code, "title": p.title, "days": p.days, "rub": p.rub, "stars": p.stars,
-                      "per_month": per_month,
+        rub, stars = promos.price(p, promo)
+        plans.append({"code": p.code, "title": p.title, "days": p.days, "rub": rub, "stars": stars,
+                      "rub_full": p.rub, "stars_full": p.stars,
+                      "per_month": round(rub / (p.days / 30)),
                       "discount": max(0, round(100 - per_month * 100 / base.rub)) if p is not base else 0})
     bot_username = request.app["bot_username"]
     return web.json_response({
@@ -145,6 +149,7 @@ async def me(request: web.Request) -> web.Response:
         "sub": panel_sub(pu, user),
         "trial": {"available": not user.trial_used and settings.trial_days > 0, "days": settings.trial_days},
         "plans": plans,
+        "promo": {"code": promo.code, "percent": promo.percent} if promo else None,
         "crypto_enabled": settings.crypto_enabled,
         "happ_ios_ru": settings.happ_ios_ru_url,
         "referral": await referral_info(bot_username, tg.id) if settings.referral_bonus_days > 0 else None,
@@ -169,23 +174,40 @@ async def pay(request: web.Request) -> web.Response:
         return err("Тариф не найден")
     user = await current_user(request)
     bot: Bot = request.app["bot"]
+    promo = await promos.current(user.tg_id)
+    _, stars = promos.price(plan, promo)
     if body.get("method") == "stars":
         link = await bot.create_invoice_link(
             title=f"{settings.brand_name}: {plan.title}",
-            description=f"VPN-подписка на {plan.days} дн., до {settings.device_limit} устройств",
-            payload=f"vpn:{plan.code}",
+            description=f"VPN-подписка на {plan.days} дн., до {settings.device_limit} устройств"
+                        + (f". Промокод {promo.code}: −{promo.percent}%" if promo else ""),
+            payload=promos.stars_payload(plan, promo),
             currency="XTR",
-            prices=[LabeledPrice(label=plan.title, amount=plan.stars)],
+            prices=[LabeledPrice(label=plan.title, amount=stars)],
         )
         return web.json_response({"invoice_link": link})
     if body.get("method") == "crypto":
         if not settings.crypto_enabled:
             return err("Оплата криптой отключена")
-        payment = await create_crypto_payment(user.tg_id, plan)
+        payment = await create_crypto_payment(user.tg_id, plan, promo)
         if payment is None:
             return err("CryptoBot сейчас недоступен, попробуй Stars или позже")
         return web.json_response({"payment_id": payment.id, "pay_url": payment.pay_url})
     return err("Неизвестный способ оплаты")
+
+
+async def promo_apply(request: web.Request) -> web.Response:
+    """Применить промокод ({"code": "..."}) или убрать его ({"code": ""})."""
+    body = await request.json()
+    user = await current_user(request)
+    code = str(body.get("code") or "")
+    if not code.strip():
+        await promos.clear(user.tg_id)
+        return web.json_response({"ok": True, "promo": None})
+    promo, error = await promos.apply(user.tg_id, code)
+    if error:
+        return err(error)
+    return web.json_response({"ok": True, "promo": {"code": promo.code, "percent": promo.percent}})
 
 
 async def payment_status(request: web.Request) -> web.Response:
@@ -286,6 +308,39 @@ async def admin_recent(request: web.Request) -> web.Response:
     return web.json_response({"payments": [{
         "id": p.id, "tg_id": p.tg_id, "username": u, "method": p.method, "amount": p.amount,
         "days": p.days, "paid_at": iso(p.paid_at)} for p, u in rows]})
+
+
+async def admin_promos(request: web.Request) -> web.Response:
+    return web.json_response({"promos": await promos.list_all()})
+
+
+async def admin_promo_create(request: web.Request) -> web.Response:
+    body = await request.json()
+    try:
+        percent, max_uses = int(body.get("percent")), int(body.get("max_uses") or 0)
+    except (TypeError, ValueError):
+        return err("Скидка и лимит — числа")
+    promo, error = await promos.create(str(body.get("code") or ""), percent, max_uses)
+    if error:
+        return err(error)
+    return web.json_response({"ok": True, "promo": promos.as_dict(promo, 0)})
+
+
+async def admin_promo_update(request: web.Request) -> web.Response:
+    body = await request.json()
+    try:
+        promo_id = int(body["id"])
+        max_uses = int(body["max_uses"]) if body.get("max_uses") is not None else None
+    except (KeyError, TypeError, ValueError):
+        return err("Нужен id промокода")
+    active = bool(body["active"]) if "active" in body else None
+    if await promos.update_promo(promo_id, active=active, max_uses=max_uses) is None:
+        return err("Промокод не найден", 404)
+    return web.json_response({"ok": True})
+
+
+async def admin_promo_uses(request: web.Request) -> web.Response:
+    return web.json_response({"uses": await promos.uses(int(request.match_info["pid"]))})
 
 
 # ---------- страница ----------
@@ -393,6 +448,11 @@ def build_app(bot: Bot, bot_username: str) -> web.Application:
     r.add_post(f"{PREFIX}/api/trial", trial)
     r.add_post(f"{PREFIX}/api/pay", pay)
     r.add_get(f"{PREFIX}/api/payment/{{pid:\\d+}}", payment_status)
+    r.add_post(f"{PREFIX}/api/promo", promo_apply)
+    r.add_get(f"{PREFIX}/api/admin/promos", admin_promos)
+    r.add_post(f"{PREFIX}/api/admin/promos/create", admin_promo_create)
+    r.add_post(f"{PREFIX}/api/admin/promos/update", admin_promo_update)
+    r.add_get(f"{PREFIX}/api/admin/promos/{{pid:\\d+}}/uses", admin_promo_uses)
     r.add_get(f"{PREFIX}/api/devices", devices)
     r.add_post(f"{PREFIX}/api/devices/delete", device_delete)
     r.add_get(f"{PREFIX}/api/admin/stats", admin_stats)

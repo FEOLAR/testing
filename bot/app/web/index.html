@@ -111,6 +111,15 @@ details li{margin:6px 0}
 .plan .t{flex:1;min-width:0}
 .plan .p{text-align:right;font-weight:800}
 .save{font-size:11.5px;font-weight:800;color:#000;background:#fff;border-radius:6px;padding:1px 6px;margin-left:6px}
+.old{color:var(--muted);font-weight:600;text-decoration:line-through;font-size:13px;margin-right:4px}
+.promo-on{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.promo-code{font-weight:800;letter-spacing:.5px}
+.pr-row{padding:11px 0;border-top:1px solid var(--line)}
+.pr-row:first-child{border-top:0}
+.pr-head{display:flex;align-items:center;gap:10px;cursor:pointer}
+.pr-head .c{flex:1;min-width:0}
+.pr-off{opacity:.55}
+.pr-body{margin-top:10px}
 .dev{display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line)}
 .dev:first-child{border-top:0;padding-top:0}
 .dev .ic{width:40px;height:40px;border-radius:12px;background:rgba(255,255,255,.06);border:1px solid var(--line);display:grid;place-items:center;flex:none}
@@ -487,6 +496,21 @@ async function startTrial() {
 }
 
 // ---------- ТАРИФЫ ----------
+function promoBlock(me) {
+  if (me.promo) return `<div class="card promo-on"><div><div class="muted small">Промокод применён</div>
+      <div><span class="promo-code">${esc(me.promo.code)}</span> · скидка ${me.promo.percent}%</div></div>
+      <button class="btn sec sm" id="promoOff">Убрать</button></div>`;
+  return `<div class="card"><div class="h3">Есть промокод?</div>
+    <div class="field"><input id="promoIn" placeholder="Введи промокод" autocomplete="off" autocapitalize="characters" maxlength="32">
+    <button class="btn sm" id="promoApply">Применить</button></div></div>`;
+}
+async function promoSet(code) {
+  try {
+    const r = await api('promo', {code});
+    haptic(code ? 'medium' : 'light'); toast(r.promo ? `Скидка ${r.promo.percent}% применена` : 'Промокод убран');
+    await loadMe(true); renderBuy();
+  } catch (e) { toast(e.message); }
+}
 function renderBuy() {
   const me = S.me; S.plan = S.plan || (me.plans[1] || me.plans[0]).code;
   const p = me.plans.find(x => x.code === S.plan);
@@ -495,8 +519,9 @@ function renderBuy() {
     <div class="plans">${me.plans.map(x => `<button class="plan ${x.code === S.plan ? 'on' : ''}" data-plan="${x.code}">
       <div class="radio"></div><div class="t"><div style="font-weight:700">${esc(x.title)}${x.discount ? `<span class="save">−${x.discount}%</span>` : ''}</div>
       <div class="muted small">${x.per_month} ₽ в месяц</div></div>
-      <div class="p">${x.rub} ₽<div class="muted small" style="font-weight:600">${x.stars} ⭐</div></div></button>`).join('')}</div>
-    <div class="card" style="margin-top:14px">
+      <div class="p">${me.promo ? `<span class="old">${x.rub_full} ₽</span>` : ''}${x.rub} ₽<div class="muted small" style="font-weight:600">${x.stars} ⭐</div></div></button>`).join('')}</div>
+    <div style="margin-top:14px">${promoBlock(me)}</div>
+    <div class="card">
       <div class="h3">Оплата: ${esc(p.title)}</div><div class="muted small">Подписка активируется сразу после оплаты.</div>
       <button class="btn" style="margin-top:12px" id="payStars">${ic('star',18,'#fff')} Telegram Stars — ${p.stars} ⭐</button>
       ${me.crypto_enabled ? `<button class="btn sec" style="margin-top:10px" id="payCrypto">${ic('coin',18)} Криптовалюта — ${p.rub} ₽</button>` : ''}
@@ -509,6 +534,10 @@ function renderBuy() {
   view.innerHTML = html;
   view.querySelectorAll('[data-plan]').forEach(b => b.onclick = () => { S.plan = b.dataset.plan; haptic(); renderBuy(); });
   bindDocs();
+  const pa = $('#promoApply'), pi = $('#promoIn'), po = $('#promoOff');
+  if (pa) { pa.onclick = () => { const c = pi.value.trim(); if (c) promoSet(c); else toast('Введи промокод'); };
+            pi.onkeydown = e => { if (e.key === 'Enter') pa.click(); }; }
+  if (po) po.onclick = () => promoSet('');
   $('#payStars').onclick = payStars;
   const pc = $('#payCrypto'); if (pc) pc.onclick = payCrypto;
   if (S.pending) { $('#pendOpen').onclick = () => openTg(S.pending.pay_url); $('#pendCheck').onclick = () => checkPending(true); }
@@ -616,8 +645,8 @@ function renderRef() {
 // ---------- АДМИН ----------
 async function loadAdmin() {
   try {
-    const [st, pays] = await Promise.all([api('admin/stats'), api('admin/payments')]);
-    S.admin = {stats: st, payments: pays.payments};
+    const [st, pays, pr] = await Promise.all([api('admin/stats'), api('admin/payments'), api('admin/promos')]);
+    S.admin = {stats: st, payments: pays.payments, promos: pr.promos};
   } catch (e) { toast(e.message); S.admin = {error: e.message}; }
   if (S.tab === 'admin') renderAdmin();
 }
@@ -637,6 +666,7 @@ function renderAdmin() {
   html += `<div class="card"><div class="h3">Найти пользователя</div>
     <div class="field"><input id="admQ" placeholder="Telegram ID или @username" inputmode="text" autocomplete="off"><button class="btn sm" id="admFind">Найти</button></div>
     <div id="admUser"></div></div>`;
+  if (S.admin.promos) html += promoAdminBlock();
   if (S.admin.payments) html += `<div class="card"><div class="h3" style="margin-bottom:8px">Последние оплаты</div>
     ${S.admin.payments.map(p => `<div class="list-row"><span>${p.method === 'stars' ? '⭐' : '🪙'} ${esc(p.username ? '@' + p.username : p.tg_id)} · ${p.days} дн</span><span class="muted">${esc(p.amount)} · ${fmtDate(p.paid_at, true).replace(/ \d{4}/, '')}</span></div>`).join('') || '<div class="muted">Пока нет</div>'}</div>`;
   view.innerHTML = html;
@@ -644,6 +674,73 @@ function renderAdmin() {
   $('#admFind').onclick = adminFind;
   $('#admQ').onkeydown = e => { if (e.key === 'Enter') adminFind(); };
   if (S.adminUser) { $('#admQ').value = S.adminUser.tg_id; renderAdminUser(); }
+  if (S.admin.promos) bindPromoAdmin();
+}
+
+// ---------- промокоды (админ) ----------
+function promoLimit(p) { return p.max_uses ? `${p.used} из ${p.max_uses}` : `${p.used} · без лимита`; }
+function promoAdminBlock() {
+  const list = S.admin.promos;
+  const rows = list.map(p => {
+    const open = S.promoOpen === p.id, full = p.max_uses && p.used >= p.max_uses;
+    const state = !p.active ? '<span class="pill bad">выключен</span>' : full ? '<span class="pill warn">закончился</span>' : '<span class="pill ok">активен</span>';
+    let body = '';
+    if (open) {
+      const uses = S.promoUses && S.promoUses.id === p.id ? S.promoUses.list : null;
+      body = `<div class="pr-body">
+        <div class="btns" style="margin-top:0">${p.active
+          ? `<button class="btn danger sm" data-ptoggle="${p.id}" data-on="0">Выключить</button>`
+          : `<button class="btn sm" data-ptoggle="${p.id}" data-on="1">Включить</button>`}</div>
+        <div class="field"><input id="plim" type="number" min="0" max="100000" value="${p.max_uses}" placeholder="Лимит, 0 — без лимита">
+          <button class="btn sec sm" data-plim="${p.id}">Сохранить лимит</button></div>
+        <div class="h3" style="margin:14px 0 4px">Кто использовал</div>
+        ${uses === null ? '<div class="muted small">Загружаю…</div>' : uses.length ? uses.map(u => `<div class="list-row"><span>${esc(u.username ? '@' + u.username : (u.first_name || u.tg_id))} · ${u.days} дн</span><span class="muted">${esc(u.amount)} · ${fmtDate(u.paid_at)}</span></div>`).join('') : '<div class="muted small">Пока никто</div>'}
+      </div>`;
+    }
+    return `<div class="pr-row ${p.active ? '' : 'pr-off'}"><div class="pr-head" data-popen="${p.id}">
+      <div class="c"><div><span class="promo-code">${esc(p.code)}</span> · −${p.percent}%</div><div class="muted small">Активаций: ${promoLimit(p)}</div></div>
+      ${state}</div>${body}</div>`;
+  }).join('');
+  return `<div class="card"><div class="h3">Промокоды</div>
+    <div class="muted small">Скидка действует на любой тариф. Один человек — одна активация кода.</div>
+    <div class="field"><input id="pcode" placeholder="КОД" autocomplete="off" autocapitalize="characters" maxlength="32"></div>
+    <div class="field" style="margin-top:8px"><input id="ppct" type="number" min="1" max="99" placeholder="Скидка, %">
+      <input id="pmax" type="number" min="0" placeholder="Лимит (0 = ∞)"></div>
+    <button class="btn" style="margin-top:10px" id="pcreate">Создать промокод</button>
+    <div style="margin-top:14px">${rows || '<div class="muted small">Промокодов пока нет</div>'}</div></div>`;
+}
+async function reloadPromos() {
+  try { S.admin.promos = (await api('admin/promos')).promos; } catch (e) { toast(e.message); }
+  renderAdmin();
+}
+function bindPromoAdmin() {
+  $('#pcreate').onclick = async () => {
+    const code = $('#pcode').value.trim(), percent = parseInt($('#ppct').value, 10), max_uses = parseInt($('#pmax').value || '0', 10);
+    if (!code) return toast('Введи код');
+    if (!(percent >= 1 && percent <= 99)) return toast('Скидка: от 1 до 99%');
+    try { await api('admin/promos/create', {code, percent, max_uses}); haptic('medium'); toast(`Промокод ${code.toUpperCase()} создан`); await reloadPromos(); }
+    catch (e) { toast(e.message); }
+  };
+  view.querySelectorAll('[data-popen]').forEach(h => h.onclick = async () => {
+    const id = +h.dataset.popen;
+    if (S.promoOpen === id) { S.promoOpen = null; renderAdmin(); return; }
+    S.promoOpen = id; S.promoUses = null; renderAdmin();
+    try { S.promoUses = {id, list: (await api(`admin/promos/${id}/uses`)).uses}; } catch (e) { toast(e.message); S.promoUses = {id, list: []}; }
+    if (S.promoOpen === id && S.tab === 'admin') renderAdmin();
+  });
+  view.querySelectorAll('[data-ptoggle]').forEach(b => b.onclick = async ev => {
+    ev.stopPropagation();
+    const on = b.dataset.on === '1';
+    if (!on && !await confirmBox('Выключить промокод? Его нельзя будет применить, пока не включишь снова.')) return;
+    try { await api('admin/promos/update', {id: +b.dataset.ptoggle, active: on}); toast(on ? 'Промокод включён' : 'Промокод выключен'); await reloadPromos(); }
+    catch (e) { toast(e.message); }
+  });
+  view.querySelectorAll('[data-plim]').forEach(b => b.onclick = async () => {
+    const v = parseInt($('#plim').value || '0', 10);
+    if (!(v >= 0)) return toast('Лимит — число от 0');
+    try { await api('admin/promos/update', {id: +b.dataset.plim, max_uses: v}); toast(v ? `Лимит: ${v}` : 'Лимит снят'); await reloadPromos(); }
+    catch (e) { toast(e.message); }
+  });
 }
 async function adminFind() {
   const q = $('#admQ').value.trim(); if (!q) return;

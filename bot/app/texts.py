@@ -91,16 +91,26 @@ def profile(user, active: bool) -> str:
     return "\n".join(lines)
 
 
-def tariffs() -> str:
+def tariffs(promo=None) -> str:
+    from .promo import price
     rows = [f"{e('card')} <b>Тарифы</b>\n", f"Без ограничений по трафику, до {settings.device_limit} устройств.\n"]
+    if promo:
+        rows.append(f"{e('ticket')} Промокод <b>{escape(promo.code)}</b>: скидка <b>{promo.percent}%</b> на любой тариф\n")
     base = settings.plan_list[0]
     for p in settings.plan_list:
         per_month = round(p.rub / (p.days / 30))
         discount = round(100 - per_month * 100 / base.rub) if p is not base else 0
         tail = f"  (выгода {discount}%)" if discount > 0 else ""
-        rows.append(f"• {p.title} — {p.rub} ₽ / {p.stars} ⭐{tail}")
+        rub, stars = price(p, promo)
+        old = f"<s>{p.rub} ₽</s> " if promo else ""
+        rows.append(f"• {p.title} — {old}{rub} ₽ / {stars} ⭐{tail}")
     rows.append("\nВыбери срок:")
     return "\n".join(rows)
+
+
+def promo_ask() -> str:
+    return (f"{e('ticket')} <b>Промокод</b>\n\n"
+            "Отправь промокод сообщением — скидка применится ко всем тарифам.")
 
 
 def legal_note() -> str:
@@ -110,13 +120,16 @@ def legal_note() -> str:
             f"и <a href='{settings.site_url('privacy')}'>Политику конфиденциальности</a>.</i>")
 
 
-def choose_method(plan: Plan) -> str:
-    return f"Тариф: <b>{plan.title}</b>\n\nКак удобнее оплатить?" + legal_note()
+def choose_method(plan: Plan, promo=None) -> str:
+    from .promo import price
+    rub, _ = price(plan, promo)
+    tail = f"\nК оплате: <s>{plan.rub} ₽</s> <b>{rub} ₽</b> — промокод {escape(promo.code)}, −{promo.percent}%" if promo else ""
+    return f"Тариф: <b>{plan.title}</b>{tail}\n\nКак удобнее оплатить?" + legal_note()
 
 
-def crypto_invoice(plan: Plan) -> str:
+def crypto_invoice(plan: Plan, rub: int | None = None) -> str:
     return (
-        f"{e('coin')} Счёт на <b>{plan.rub} ₽</b> в криптовалюте ({settings.cryptopay_assets.replace(',', ', ')}).\n\n"
+        f"{e('coin')} Счёт на <b>{rub or plan.rub} ₽</b> в криптовалюте ({settings.cryptopay_assets.replace(',', ', ')}).\n\n"
         "1. Нажми «Оплатить» и оплати в @CryptoBot.\n"
         "2. Вернись сюда — подписка включится сама в течение минуты.\n\n"
         "Счёт действует 1 час."

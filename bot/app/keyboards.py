@@ -84,17 +84,24 @@ def back(to: str = "menu") -> M:
     return M(inline_keyboard=[[_back(to)]])
 
 
-def plans() -> M:
-    rows = [[btn("calendar", f"{p.title} — {p.rub} ₽", callback_data=f"plan:{p.code}")] for p in settings.plan_list]
+def plans(promo=None) -> M:
+    from .promo import price
+    rows = [[btn("calendar", f"{p.title} — {price(p, promo)[0]} ₽", callback_data=f"plan:{p.code}")]
+            for p in settings.plan_list]
+    if promo:
+        rows.append([btn("no", f"Убрать промокод {promo.code}", callback_data="promo_off")])
+    else:
+        rows.append([btn("ticket", "Ввести промокод", callback_data="promo")])
     rows.append([_back()])
     return M(inline_keyboard=rows)
 
 
-def methods(plan_code: str) -> M:
-    plan = settings.plan(plan_code)
-    rows = [[btn("star", f"Telegram Stars — {plan.stars} ⭐", callback_data=f"pay:stars:{plan_code}")]]
+def methods(plan, promo=None) -> M:
+    from .promo import price
+    rub, stars = price(plan, promo)
+    rows = [[btn("star", f"Telegram Stars — {stars} ⭐", callback_data=f"pay:stars:{plan.code}")]]
     if settings.crypto_enabled:
-        rows.append([btn("coin", "Криптовалюта (CryptoBot)", callback_data=f"pay:crypto:{plan_code}")])
+        rows.append([btn("coin", f"Криптовалюта — {rub} ₽", callback_data=f"pay:crypto:{plan.code}")])
     rows.append([_back("buy")])
     return M(inline_keyboard=rows)
 

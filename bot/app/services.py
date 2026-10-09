@@ -9,7 +9,7 @@ from sqlalchemy import select, update
 from .config import settings
 from .db import Payment, Session, User, utcnow
 from .remnawave import panel, parse_dt
-from . import texts
+from . import promo as promos, texts
 
 log = logging.getLogger(__name__)
 
@@ -81,9 +81,17 @@ async def process_payment(bot: Bot, payment_id: int) -> bool:
                         .values(status="paid", paid_at=utcnow()))
         await s.commit()
 
+    promo_note = ""
+    if payment.promo_id:  # код использован — снимаем его с пользователя
+        async with Session() as s:
+            await s.execute(update(User).where(User.tg_id == payment.tg_id, User.promo_id == payment.promo_id)
+                            .values(promo_id=None))
+            await s.commit()
+        p = await promos.get(payment.promo_id)
+        promo_note = f", промокод {p.code} −{p.percent}%" if p else ""
     await safe_send(bot, payment.tg_id, texts.paid(user, payment.days))
     await reward_referrer(bot, payment.tg_id)
-    await notify_admins(bot, f"💰 Оплата #{payment_id}: {payment.amount} от {payment.tg_id} ({payment.days} дн.)")
+    await notify_admins(bot, f"💰 Оплата #{payment_id}: {payment.amount} от {payment.tg_id} ({payment.days} дн.{promo_note})")
     return True
 
 
@@ -166,17 +174,18 @@ async def pending_crypto_payments() -> list[Payment]:
 
 # ---------- общее для бота и мини-приложения ----------
 
-async def create_crypto_payment(tg_id: int, plan) -> Payment | None:
-    """Создаёт счёт CryptoBot. None — если CryptoBot недоступен."""
+async def create_crypto_payment(tg_id: int, plan, promo=None) -> Payment | None:
+    """Создаёт счёт CryptoBot (со скидкой по промокоду, если он есть). None — если CryptoBot недоступен."""
     from .cryptopay import crypto
+    rub, _ = promos.price(plan, promo)
     async with Session() as s:
         payment = Payment(tg_id=tg_id, plan_code=plan.code, days=plan.days,
-                          method="crypto", amount=f"{plan.rub} RUB")
+                          method="crypto", amount=f"{rub} RUB", promo_id=promo.id if promo else None)
         s.add(payment)
         await s.commit()
         try:
             inv = await crypto.create_invoice(
-                rub=plan.rub,
+                rub=rub,
                 description=f"{settings.brand_name}: подписка {plan.title}",
                 payload=str(payment.id),
             )
@@ -278,9 +287,9 @@ async def record_stars_payment(bot: Bot, tg_id: int, payload: str, amount: int, 
     """Записывает Stars-оплату и выдаёт дни. Идемпотентно по charge_id.
     Возвращает: granted | duplicate | unknown_plan | grant_error."""
     from sqlalchemy.dialects.postgresql import insert
-    code = payload.split(":", 1)[1] if payload.startswith("vpn:") else ""
+    code, promo_id = promos.parse_payload(payload)
     plan = settings.plan(code) if code else None
-    values = dict(tg_id=tg_id, method="stars", amount=f"{amount} XTR", external_id=charge_id)
+    values = dict(tg_id=tg_id, method="stars", amount=f"{amount} XTR", external_id=charge_id, promo_id=promo_id)
     if plan:
         values.update(plan_code=plan.code, days=plan.days)
     else:  # записываем, чтобы сверка не находила эту оплату снова каждые 10 минут
