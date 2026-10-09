@@ -419,6 +419,7 @@ function renderHome() {
       <p class="muted" style="margin:10px 0 0">До ${esc((s && s.device_limit) || '∞')} устройств на одну подписку. Если лимит занят — удали старое устройство во вкладке «Устройства».</p>
     </details>
     ${me.support ? `<button class="btn sec" style="margin-top:14px" id="supBtn">${ic('help', 18)} Написать в поддержку</button>` : ''}
+    <p class="muted small center" style="margin:14px 0 0"><a href="#" data-doc="terms" style="color:inherit">Пользовательское соглашение</a> · <a href="#" data-doc="privacy" style="color:inherit">Политика конфиденциальности</a></p>
   </div>`;
   view.innerHTML = html;
   bindCommon();
@@ -439,6 +440,7 @@ function renderHome() {
   on('mLink', () => copy(s.sub_url, 'Ссылка-подписка скопирована'));
   on('mHelp', () => { const el = $('#help'); el.querySelector('details').open = true; el.scrollIntoView({behavior: 'smooth'}); });
   on('supBtn', () => openTg(me.support_url));
+  bindDocs();
   bindSetup();
   if (!S.devices && st.key !== 'none') loadDevices(true);
 }
@@ -475,6 +477,7 @@ function bindSetup() {
   $('#addBtn').onclick = () => openDeeplink(DL[app.id](S.me.sub.sub_url));
   $('#copyBtn').onclick = () => copy(S.me.sub.sub_url, 'Ссылка-подписка скопирована');
 }
+function bindDocs() { view.querySelectorAll('[data-doc]').forEach(a => a.onclick = ev => { ev.preventDefault(); openExternal(location.origin + BASE + a.dataset.doc); }); }
 function bindCommon() { view.querySelectorAll('[data-go]').forEach(b => b.onclick = () => go(b.dataset.go)); }
 
 async function startTrial() {
@@ -498,12 +501,14 @@ function renderBuy() {
       <button class="btn" style="margin-top:12px" id="payStars">${ic('star',18,'#fff')} Telegram Stars — ${p.stars} ⭐</button>
       ${me.crypto_enabled ? `<button class="btn sec" style="margin-top:10px" id="payCrypto">${ic('coin',18)} Криптовалюта — ${p.rub} ₽</button>` : ''}
       <p class="muted small center" style="margin:12px 0 0">Звёзды можно купить прямо в Telegram. Крипта — USDT или TON через @CryptoBot.</p>
+      <p class="muted small center" style="margin:8px 0 0">Оплачивая, ты принимаешь <a href="#" data-doc="terms" style="color:inherit">Пользовательское соглашение</a> и <a href="#" data-doc="privacy" style="color:inherit">Политику конфиденциальности</a>.</p>
     </div>`;
   if (S.pending) html += `<div class="card" id="pend"><div class="h3">⏳ Ждём оплату в CryptoBot</div>
     <div class="muted small">Как только оплата пройдёт, подписка продлится автоматически.</div>
     <div class="btns"><button class="btn sec sm" id="pendOpen">Открыть счёт</button><button class="btn sm" id="pendCheck">Проверить</button></div></div>`;
   view.innerHTML = html;
   view.querySelectorAll('[data-plan]').forEach(b => b.onclick = () => { S.plan = b.dataset.plan; haptic(); renderBuy(); });
+  bindDocs();
   $('#payStars').onclick = payStars;
   const pc = $('#payCrypto'); if (pc) pc.onclick = payCrypto;
   if (S.pending) { $('#pendOpen').onclick = () => openTg(S.pending.pay_url); $('#pendCheck').onclick = () => checkPending(true); }

@@ -103,8 +103,15 @@ def tariffs() -> str:
     return "\n".join(rows)
 
 
+def legal_note() -> str:
+    if not settings.miniapp_url:
+        return ""
+    return (f"\n\n<i>Оплачивая, ты принимаешь <a href='{settings.site_url('terms')}'>Пользовательское соглашение</a> "
+            f"и <a href='{settings.site_url('privacy')}'>Политику конфиденциальности</a>.</i>")
+
+
 def choose_method(plan: Plan) -> str:
-    return f"Тариф: <b>{plan.title}</b>\n\nКак удобнее оплатить?"
+    return f"Тариф: <b>{plan.title}</b>\n\nКак удобнее оплатить?" + legal_note()
 
 
 def crypto_invoice(plan: Plan) -> str:

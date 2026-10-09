@@ -97,6 +97,10 @@ class Settings(BaseSettings):
                 out[name.strip()] = max(0.1, float(w))
         return out
 
+    def site_url(self, page: str) -> str:
+        """Публичная страница сайта (info, terms, privacy) рядом с мини-аппом; пусто — если мини-апп не настроен."""
+        return f"{self.miniapp_url.rstrip('/')}/{page}" if self.miniapp_url else ""
+
     @property
     def crypto_enabled(self) -> bool:
         return bool(self.cryptopay_token)

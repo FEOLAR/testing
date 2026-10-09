@@ -324,6 +324,27 @@ async def info(request: web.Request) -> web.Response:
                         headers={"Cache-Control": "public, max-age=300"})
 
 
+LEGAL_DOCS = ("privacy", "terms")
+
+
+def _legal_page(name: str) -> str:
+    import json
+    from html import escape
+    from string import Template
+    doc = json.loads((WEB_DIR / "legal" / f"{name}.json").read_text(encoding="utf-8"))
+    tpl = Template((WEB_DIR / "legal.html").read_text(encoding="utf-8"))
+    return tpl.safe_substitute(title=escape(doc["title"]), date=escape(doc["date"]), body=doc["body"],
+                               brand=escape(settings.brand_name))
+
+
+async def legal(request: web.Request) -> web.Response:
+    name = request.match_info["doc"]
+    if name not in LEGAL_DOCS:
+        raise web.HTTPNotFound()
+    return web.Response(text=_legal_page(name), content_type="text/html",
+                        headers={"Cache-Control": "public, max-age=300"})
+
+
 async def logo(request: web.Request) -> web.FileResponse:
     return web.FileResponse(WEB_DIR / "logo.webp", headers={"Cache-Control": "public, max-age=86400", "Content-Type": "image/webp"})
 
@@ -365,6 +386,7 @@ def build_app(bot: Bot, bot_username: str) -> web.Application:
     r.add_get(f"{PREFIX}/", index)
     r.add_get(f"{PREFIX}/tg.js", tg_js)
     r.add_get(f"{PREFIX}/info", info)
+    r.add_get(f"{PREFIX}/{{doc:privacy|terms}}", legal)
     r.add_get(f"{PREFIX}/logo.webp", logo)
     r.add_get(f"{PREFIX}/go", go)
     r.add_get(f"{PREFIX}/api/me", me)

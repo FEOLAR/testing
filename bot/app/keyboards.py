@@ -59,7 +59,9 @@ def open_app() -> M:
 def service() -> M:
     rows = []
     if settings.miniapp_url:
-        rows.append([btn("globe", "Перейти на сайт", "primary", url=settings.miniapp_url.rstrip("/") + "/info")])
+        rows.append([btn("globe", "Перейти на сайт", "primary", url=settings.site_url("info"))])
+        rows.append([btn("book", "Соглашение", url=settings.site_url("terms")),
+                     btn("lock", "Конфиденциальность", url=settings.site_url("privacy"))])
     rows.append([_back()])
     return M(inline_keyboard=rows)
 
