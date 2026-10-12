@@ -145,7 +145,9 @@ async def refresh_from_panel(user: User) -> User:
                 db_user.notice = ""
             db_user.sub_url, db_user.expire_at = pu.get("subscriptionUrl"), new_expire
         await s.commit()
-        return db_user
+    # реальный лимит устройств из панели (админ мог увеличить) — не хранится в БД, только для показа
+    db_user.device_limit = (pu or {}).get("hwidDeviceLimit") or settings.device_limit
+    return db_user
 
 
 async def safe_send(bot: Bot, chat_id: int, text: str, **kw) -> bool:

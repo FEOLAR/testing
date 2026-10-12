@@ -91,7 +91,12 @@ class Remnawave:
         new_expire = max(now, current) + timedelta(days=days)
         # status не передаём: панель сама переводит EXPIRED -> ACTIVE при новом expireAt,
         # а вручную отключённого (DISABLED) пользователя не включаем.
-        return await self.update_user(username, expireAt=_iso(new_expire), hwidDeviceLimit=settings.device_limit)
+        # Лимит устройств поднимаем до стандартного, но не урезаем, если админ выдал больше.
+        fields = {"expireAt": _iso(new_expire)}
+        current_limit = user.get("hwidDeviceLimit")
+        if current_limit is None or current_limit < settings.device_limit:
+            fields["hwidDeviceLimit"] = settings.device_limit
+        return await self.update_user(username, **fields)
 
     async def remove_days(self, username: str, days: int) -> dict | None:
         """Уменьшает срок на days (не раньше текущего момента). None — пользователя нет."""

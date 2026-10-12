@@ -27,6 +27,7 @@ ICONS: list[tuple[str, str]] = [  # (имя файла без .png, обычны
     ("rocket", "🚀"), ("lock", "🔒"), ("wifi", "📶"), ("refresh", "🔄"), ("crown", "👑"),
     ("settings", "⚙️"), ("bank", "🏦"), ("back", "⬅️"), ("app", "📱"), ("calendar", "📅"),
     ("trash", "🗑"), ("game", "🎮"), ("bot", "🤖"), ("apple", "🍏"), ("ticket", "🎟"),
+    ("link", "🔗"), ("alert", "⚠️"),
 ]
 FALLBACK = dict(ICONS)
 _ids: dict[str, str] = {}
@@ -42,7 +43,7 @@ ALIASES: dict[str, tuple[str, ...]] = {
     "key": ("🔑", "🗝"), "ok": ("✅", "✔"), "no": ("❌", "✖"), "clock": ("⏳", "⏰", "🕐", "⌛"),
     "rocket": ("🚀",), "lock": ("🔒", "🔐"), "wifi": ("📶", "🛜"), "refresh": ("🔄", "🔃", "♻"),
     "crown": ("👑",), "settings": ("⚙",), "bank": ("🏦",), "back": ("⬅", "◀", "🔙", "↩"),
-    "calendar": ("📅", "📆", "🗓"), "trash": ("🗑",), "game": ("🎮", "🕹"), "bot": ("🤖",), "apple": ("🍏", "🍎"), "ticket": ("🎟", "🎫", "🏷"),
+    "calendar": ("📅", "📆", "🗓"), "trash": ("🗑",), "game": ("🎮", "🕹"), "bot": ("🤖",), "apple": ("🍏", "🍎"), "ticket": ("🎟", "🎫", "🏷"), "link": ("🔗", "📎"), "alert": ("⚠", "❗", "‼"),
 }
 
 

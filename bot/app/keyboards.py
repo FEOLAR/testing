@@ -33,7 +33,7 @@ def main_menu(show_trial: bool) -> M:
     rows += [
         [btn("bot", "Что умеет бот?", callback_data="about")],
         [btn("user", "Моя подписка", callback_data="profile")],
-        [btn("card", "Купить / продлить", callback_data="buy"), btn("book", "Инструкция", callback_data="howto")],
+        [btn("card", "Тарифы", callback_data="buy"), btn("book", "Инструкция", callback_data="howto")],
     ]
     if settings.referral_bonus_days > 0:
         rows.append([btn("friends", "Пригласить друга", callback_data="ref")])
@@ -75,7 +75,7 @@ def support() -> M:
 
 def howto() -> M:
     return M(inline_keyboard=[
-        [btn("apple", "Happ не находится в App Store", callback_data="appstore_help")],
+        [btn("apple", "Happ недоступен в App Store", callback_data="appstore_help")],
         [_back()],
     ])
 

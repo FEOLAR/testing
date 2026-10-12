@@ -27,6 +27,8 @@ SCREENS = {
     "partner": WEB / "screens" / "partner.jpg",
     "referral": WEB / "screens" / "referral.jpg",
     "support": WEB / "screens" / "support.jpg",
+    "features": WEB / "screens" / "features.jpg",
+    "profile": WEB / "screens" / "profile.jpg",
 }
 _file_id: dict[str, str] = {}   # имя -> file_id после первой загрузки (дальше файл не перезаливается)
 _unique: dict[str, str] = {}    # имя -> file_unique_id, чтобы понять, какая картинка сейчас в сообщении

@@ -54,6 +54,13 @@ async def main() -> None:
     # Команды (видны, если набрать «/»): запуск и главное меню
     await bot.set_my_commands([BotCommand(command="start", description="Запустить бота"),
                                BotCommand(command="menu", description="Главное меню")])
+    # Описание до нажатия «Старт» и короткое описание в профиле бота
+    try:
+        from . import texts
+        await bot.set_my_description(description=texts.bot_description())
+        await bot.set_my_short_description(short_description=texts.bot_short_description())
+    except Exception:
+        log.warning("cannot set bot description", exc_info=True)
     # Кнопка слева от поля ввода — «Открыть» мини-апп (без мини-аппа — список команд)
     try:
         if settings.miniapp_url:

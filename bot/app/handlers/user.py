@@ -75,7 +75,7 @@ async def profile(cb: CallbackQuery):
         except Exception:
             log.exception("panel refresh failed")
     active = is_active(user)
-    await ui.show(cb, texts.profile(user, active), reply_markup=kb.profile(active))
+    await ui.show(cb, texts.profile(user, active), reply_markup=kb.profile(active), photo="profile")
     await cb.answer()
 
 
@@ -87,7 +87,7 @@ async def howto(cb: CallbackQuery):
 
 @router.callback_query(F.data == "about")
 async def about(cb: CallbackQuery):
-    await ui.show(cb, texts.about(), reply_markup=kb.back())
+    await ui.show(cb, texts.about(), reply_markup=kb.back(), photo="features")
     await cb.answer()
 
 
