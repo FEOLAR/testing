@@ -27,7 +27,7 @@ ICONS: list[tuple[str, str]] = [  # (имя файла без .png, обычны
     ("rocket", "🚀"), ("lock", "🔒"), ("wifi", "📶"), ("refresh", "🔄"), ("crown", "👑"),
     ("settings", "⚙️"), ("bank", "🏦"), ("back", "⬅️"), ("app", "📱"), ("calendar", "📅"),
     ("trash", "🗑"), ("game", "🎮"), ("bot", "🤖"), ("apple", "🍏"), ("ticket", "🎟"),
-    ("link", "🔗"), ("alert", "⚠️"),
+    ("link", "🔗"), ("alert", "⚠️"), ("menu", "📋"),
 ]
 FALLBACK = dict(ICONS)
 _ids: dict[str, str] = {}
@@ -43,7 +43,7 @@ ALIASES: dict[str, tuple[str, ...]] = {
     "key": ("🔑", "🗝"), "ok": ("✅", "✔"), "no": ("❌", "✖"), "clock": ("⏳", "⏰", "🕐", "⌛"),
     "rocket": ("🚀",), "lock": ("🔒", "🔐"), "wifi": ("📶", "🛜"), "refresh": ("🔄", "🔃", "♻"),
     "crown": ("👑",), "settings": ("⚙",), "bank": ("🏦",), "back": ("⬅", "◀", "🔙", "↩"),
-    "calendar": ("📅", "📆", "🗓"), "trash": ("🗑",), "game": ("🎮", "🕹"), "bot": ("🤖",), "apple": ("🍏", "🍎"), "ticket": ("🎟", "🎫", "🏷"), "link": ("🔗", "📎"), "alert": ("⚠", "❗", "‼"),
+    "calendar": ("📅", "📆", "🗓"), "trash": ("🗑",), "game": ("🎮", "🕹"), "bot": ("🤖",), "apple": ("🍏", "🍎"), "ticket": ("🎟", "🎫", "🏷"), "link": ("🔗", "📎"), "alert": ("⚠", "❗", "‼"), "menu": ("📋", "🗂", "☰"),
 }
 
 
@@ -184,7 +184,8 @@ def button_icon(name: str) -> str | None:
 
 
 def _strip_icons(markup):
-    rows = getattr(markup, "inline_keyboard", None)
+    attr = "inline_keyboard" if getattr(markup, "inline_keyboard", None) else "keyboard"
+    rows = getattr(markup, attr, None)
     if not rows or not any(getattr(b, "icon_custom_emoji_id", None) for row in rows for b in row):
         return None
     fixed = []
@@ -197,7 +198,7 @@ def _strip_icons(markup):
                 b = b.model_copy(update={"icon_custom_emoji_id": None, "text": text})
             new_row.append(b)
         fixed.append(new_row)
-    return markup.model_copy(update={"inline_keyboard": fixed})
+    return markup.model_copy(update={attr: fixed})
 
 
 class ButtonIconsGuard:

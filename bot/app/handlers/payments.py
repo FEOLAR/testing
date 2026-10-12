@@ -9,6 +9,7 @@ from aiogram.types import CallbackQuery, LabeledPrice, Message, PreCheckoutQuery
 
 from .. import keyboards as kb, promo as promos, texts, ui
 from ..config import settings
+from ..emoji import e
 from ..db import Payment, Session
 from ..services import check_crypto_payment, create_crypto_payment, record_stars_payment
 
@@ -58,7 +59,7 @@ async def promo_off(cb: CallbackQuery):
 async def promo_entered(message: Message, state: FSMContext):
     promo, error = await promos.apply(message.from_user.id, message.text)
     if error:
-        return await message.answer(f"❌ {error}. Проверь код и отправь ещё раз или нажми «Назад».",
+        return await message.answer(f"{e('no')} {error}. Проверь код и отправь ещё раз или нажми «Назад».",
                                     reply_markup=kb.back("buy"))
     await state.clear()
     await ui.send_screen(message, texts.tariffs(promo), kb.plans(promo), "tariffs")
@@ -132,9 +133,9 @@ async def check_crypto(cb: CallbackQuery):
     if not payment or payment.tg_id != cb.from_user.id:
         return await cb.answer("Счёт не найден", show_alert=True)
     if payment.status == "paid":
-        return await cb.answer("✅ Уже оплачено — подписка активна", show_alert=True)
+        return await cb.answer("Уже оплачено — подписка активна", show_alert=True)
     if payment.status in ("processing", "grant_error"):  # деньги пришли, панель ещё не выдала дни
-        return await cb.answer("✅ Оплата получена, подписка активируется в течение пары минут.", show_alert=True)
+        return await cb.answer("Оплата получена, подписка активируется в течение пары минут.", show_alert=True)
     if payment.status != "pending":
         return await cb.answer("Счёт истёк. Создай новый.", show_alert=True)
     try:
@@ -143,7 +144,7 @@ async def check_crypto(cb: CallbackQuery):
         log.exception("cryptopay getInvoices failed")
         return await cb.answer("Не удалось проверить, попробуй через минуту", show_alert=True)
     if status == "paid":
-        await cb.answer("✅ Оплата найдена!")
+        await cb.answer("Оплата найдена!")
     elif status == "expired":
         await cb.answer("Счёт истёк. Создай новый.", show_alert=True)
     else:

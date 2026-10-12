@@ -12,6 +12,7 @@ from .balancer import balance_hosts
 from .config import settings
 from .cryptopay import crypto
 from .db import Payment, Session, User
+from .emoji import e
 from .services import notify_admins, pending_crypto_payments, process_payment, reconcile_stars, refresh_from_panel, safe_send
 
 log = logging.getLogger(__name__)
@@ -64,8 +65,8 @@ async def reconcile_stars_job(bot: Bot) -> None:
         log.exception("stars reconcile failed")
         return
     if found:
-        await notify_admins(bot, "🔁 Сверка Stars: найдено и выдано пропущенных оплат — " + ", ".join(
-            f"{i['tg_id']} ({i['amount']}⭐, {i.get('result')})" for i in found))
+        await notify_admins(bot, f"{e('refresh')} Сверка Stars: найдено и выдано пропущенных оплат — " + ", ".join(
+            f"{i['tg_id']} ({i['amount']} зв., {i.get('result')})" for i in found))
 
 
 async def reminders(bot: Bot) -> None:

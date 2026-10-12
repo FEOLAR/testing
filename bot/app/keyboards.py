@@ -44,12 +44,14 @@ def main_menu(show_trial: bool) -> M:
     return M(inline_keyboard=rows)
 
 
-MENU_TEXT = "📋 Меню"
+MENU_TEXT = "📋 Меню"   # текст кнопки без фирменной иконки (с иконкой — просто «Меню»)
 
 
 def reply_menu() -> ReplyKeyboardMarkup:
-    """Постоянная кнопка «Меню» под полем ввода."""
-    return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text=MENU_TEXT)]], resize_keyboard=True, is_persistent=True)
+    """Постоянная кнопка «Меню» под полем ввода (с иконкой из пака, если доступна)."""
+    cid = button_icon("menu")
+    button = KeyboardButton(text="Меню", icon_custom_emoji_id=cid) if cid else KeyboardButton(text=MENU_TEXT)
+    return ReplyKeyboardMarkup(keyboard=[[button]], resize_keyboard=True, is_persistent=True)
 
 
 def open_app() -> M:
@@ -99,7 +101,7 @@ def plans(promo=None) -> M:
 def methods(plan, promo=None) -> M:
     from .promo import price
     rub, stars = price(plan, promo)
-    rows = [[btn("star", f"Telegram Stars — {stars} ⭐", callback_data=f"pay:stars:{plan.code}")]]
+    rows = [[btn("star", f"Telegram Stars — {stars}", callback_data=f"pay:stars:{plan.code}")]]
     if settings.crypto_enabled:
         rows.append([btn("coin", f"Криптовалюта — {rub} ₽", callback_data=f"pay:crypto:{plan.code}")])
     rows.append([_back("buy")])

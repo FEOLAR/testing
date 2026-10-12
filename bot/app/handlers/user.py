@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 
 from .. import keyboards as kb, texts, ui
 from ..config import settings
+from ..emoji import e
 from ..db import Session, User
 from ..remnawave import panel
 from ..services import activate_trial, get_or_create_user, refresh_from_panel
@@ -36,7 +37,7 @@ async def start(message: Message, command: CommandObject, state: FSMContext):
         ref = int(command.args[4:])
     user, _ = await get_or_create_user(message.from_user.id, message.from_user.username,
                                        message.from_user.first_name, referrer_id=ref)
-    await message.answer(texts.MENU_HINT, reply_markup=kb.reply_menu())  # постоянная кнопка «Меню» внизу
+    await message.answer(texts.menu_hint(), reply_markup=kb.reply_menu())  # постоянная кнопка «Меню» внизу
     await ui.send_welcome(message, texts.welcome(message.from_user.first_name),
                           kb.main_menu(show_trial=not user.trial_used))
 
@@ -125,7 +126,7 @@ async def trial(cb: CallbackQuery):
         user = await activate_trial(cb.from_user.id)
     except Exception:
         log.exception("trial failed")
-        return await cb.message.answer("😔 Не получилось создать подписку. Попробуй через минуту.")
+        return await cb.message.answer(f"{e('no')} Не получилось создать подписку. Попробуй через минуту.")
     if user is None:
         return await cb.message.answer("Пробный период уже использован.")
     await ui.show(cb, texts.trial_ok(user), reply_markup=kb.profile(True))
@@ -151,5 +152,5 @@ async def reset_hwid(cb: CallbackQuery):
     except Exception:
         log.exception("reset hwid failed")
         ok = False
-    await cb.answer("✅ Устройства сброшены. Подключись заново на нужных устройствах." if ok
+    await cb.answer("Устройства сброшены. Подключись заново на нужных устройствах." if ok
                     else "Не получилось, попробуй позже.", show_alert=True)

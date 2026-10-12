@@ -98,8 +98,11 @@ details{border-top:1px solid var(--line);padding-top:12px;margin-top:12px}
 details:first-of-type{border-top:0;margin-top:0;padding-top:0}
 summary{list-style:none;cursor:pointer;font-weight:700;display:flex;justify-content:space-between;align-items:center}
 summary::-webkit-details-marker{display:none}
-summary:after{content:"＋";color:var(--muted);font-weight:400}
-details[open] summary:after{content:"－"}
+summary:after{content:"";flex:none;width:8px;height:8px;margin:0 4px 4px 12px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(45deg);transition:transform .2s}
+details[open] summary:after{transform:rotate(-135deg);margin-bottom:-4px}
+.sum-ic{display:inline-flex;align-items:center;gap:8px}
+.brand-list{margin:6px 0 0;padding-left:18px}
+.brand-list li{margin:4px 0}
 details ol,details ul{padding-left:20px;margin:10px 0 0;color:#cdd2dd}
 details li{margin:6px 0}
 .plans{display:grid;gap:10px}
@@ -156,6 +159,7 @@ details li{margin:6px 0}
 .stats3 svg{margin:0 auto 6px}
 .stats3 .v{font-weight:700;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .stats3 .k{color:var(--muted);font-size:12.5px}
+.stats3 .v.fit{font-size:clamp(10.5px,3vw,16px);letter-spacing:-.2px;text-overflow:clip}
 .menu{display:grid;gap:12px;margin-bottom:14px}
 .menu>*,.menu2>*{min-width:0}
 .menu2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
@@ -239,6 +243,13 @@ function bytes(b) { if (!b) return '0 ГБ'; const g = b / 1024 ** 3; return g >
 
 // ---------- иконки ----------
 const I = {
+  gear: '<path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/> <circle cx="12" cy="12" r="3"/>',
+  plug: '<path d="M12 22v-5"/><path d="M15 8V2"/><path d="M17 8a1 1 0 0 1 1 1v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1z"/><path d="M9 8V2"/>',
+  gauge: '<path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>',
+  clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+  apple: '<path d="M12 6.528V3a1 1 0 0 1 1-1h0"/><path d="M18.237 21A15 15 0 0 0 22 11a6 6 0 0 0-10-4.472A6 6 0 0 0 2 11a15.1 15.1 0 0 0 3.763 10 3 3 0 0 0 3.648.648 5.5 5.5 0 0 1 5.178 0A3 3 0 0 0 18.237 21"/>',
+  android: '<path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>',
+  ban: '<circle cx="12" cy="12" r="10"/><path d="M4.929 4.929 19.07 19.071"/>',
   home: '<path d="M3 11l9-7 9 7v9a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1z"/>',
   card: '<rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19M6.5 15h4"/>',
   dev: '<rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M11 18h2"/>',
@@ -388,7 +399,7 @@ function renderHome() {
     html += `<div class="card stats3">
       <div>${ic('cal', 22, '#fff', 1.8)}<div class="v">${active && l ? esc(l) : '—'}</div><div class="k">Осталось</div></div>
       <div>${ic('swap', 22, '#fff', 1.8)}<div class="v">${bytes(used)}${limit ? ' / ' + bytes(limit) : ''}</div><div class="k">Трафик</div></div>
-      <div>${ic('shield', 22, '#fff', 1.8)}<div class="v">${active ? 'Включена' : 'Выключена'}</div><div class="k">Переадресация</div></div>
+      <div>${ic('shield', 22, '#fff', 1.8)}<div class="v fit">Переадресация</div><div class="k">${active ? 'Включена' : 'Выключена'}</div></div>
     </div>`;
   }
 
@@ -407,24 +418,24 @@ function renderHome() {
   if (s && s.sub_url && st.key !== 'none') html += setupBlock();
 
   html += `<div class="card" id="help">
-    <details><summary>🔌 VPN сам отключается</summary>
+    <details><summary><span class="sum-ic">${ic('plug', 17)} VPN сам отключается</span></summary>
       <p class="muted small" style="margin:10px 0 0">Обычно VPN закрывает сам телефон: чтобы освободить память или сэкономить батарею. Включи автоподключение.</p>
-      <p style="margin:12px 0 0;font-weight:700">🍏 iPhone / iPad</p>
+      <p class="sum-ic" style="margin:12px 0 0;font-weight:700">${ic('apple', 16)} iPhone / iPad</p>
       <ol><li>Настройки → Основные → VPN и управление устройством → VPN → ⓘ у Happ → включи <b>«Подключать по запросу»</b>.</li>
       <li>Выключи «Режим энергосбережения».</li><li>Оставь в Happ одну подписку — лишние удали.</li>
       <li>На телефоне выбирай сервер с пометкой <b>📱</b> — он расходует меньше памяти, и iPhone его не отключает. Обнови Happ до последней версии.</li></ol>
-      <p style="margin:12px 0 0;font-weight:700">🤖 Android</p>
-      <ol><li>Настройки → Сеть и интернет → VPN → ⚙️ у Happ → <b>«Постоянный VPN»</b>. «Блокировать соединения без VPN» не включай.</li>
+      <p class="sum-ic" style="margin:12px 0 0;font-weight:700">${ic('android', 16)} Android</p>
+      <ol><li>Настройки → Сеть и интернет → VPN → <span class="sum-ic" style="vertical-align:-3px">${ic('gear', 15)}</span> у Happ → <b>«Постоянный VPN»</b>. «Блокировать соединения без VPN» не включай.</li>
       <li>Приложения → Happ → Батарея → <b>«Без ограничений»</b>.</li>
-      <li>Xiaomi: «Автозапуск» и «Контроль активности → Нет ограничений», закрепи Happ в недавних. Samsung: Батарея → «Никогда не переходящие в спящий режим». Huawei/Honor: Запуск приложений → Happ → «Управлять вручную».</li></ol>
+      <li>Дополнительно по марке телефона:<ul class="brand-list"><li><b>Xiaomi</b>: «Автозапуск» и «Контроль активности → Нет ограничений», закрепи Happ в недавних.</li><li><b>Samsung</b>: Батарея → «Никогда не переходящие в спящий режим».</li><li><b>Huawei / Honor</b>: Запуск приложений → Happ → «Управлять вручную».</li></ul></li></ol>
     </details>
-    <details><summary>🐢 Медленно или не подключается</summary>
+    <details><summary><span class="sum-ic">${ic('gauge', 17)} Медленно или не подключается</span></summary>
       <ol><li>Обнови подписку в приложении (потяни список серверов вниз или кнопка ⟳).</li>
       <li>Попробуй другой сервер из списка.</li>
       <li>Переключись между Wi-Fi и мобильным интернетом.</li>
       <li>Не помогло — напиши в поддержку, приложи скриншот.</li></ol>
     </details>
-    <details><summary>📱 Сколько устройств можно подключить</summary>
+    <details><summary><span class="sum-ic">${ic('phone', 17)} Сколько устройств можно подключить</span></summary>
       <p class="muted" style="margin:10px 0 0">До ${esc((s && s.device_limit) || '∞')} устройств на одну подписку. Если лимит занят — удали старое устройство во вкладке «Устройства».</p>
     </details>
     ${me.support ? `<button class="btn sec" style="margin-top:14px" id="supBtn">${ic('help', 18)} Написать в поддержку</button>` : ''}
@@ -491,7 +502,7 @@ function bindCommon() { view.querySelectorAll('[data-go]').forEach(b => b.onclic
 
 async function startTrial() {
   const b = $('#trialBtn') || $('#powerBtn'); if (b) b.disabled = true; toast('Создаю подписку…');
-  try { await api('trial', {}); haptic('medium'); toast('🎁 Пробный период активирован'); await loadMe(); }
+  try { await api('trial', {}); haptic('medium'); toast('Пробный период активирован'); await loadMe(); }
   catch (e) { toast(e.message); if (b) b.disabled = false; }
 }
 
@@ -519,16 +530,16 @@ function renderBuy() {
     <div class="plans">${me.plans.map(x => `<button class="plan ${x.code === S.plan ? 'on' : ''}" data-plan="${x.code}">
       <div class="radio"></div><div class="t"><div style="font-weight:700">${esc(x.title)}${x.discount ? `<span class="save">−${x.discount}%</span>` : ''}</div>
       <div class="muted small">${x.per_month} ₽ в месяц</div></div>
-      <div class="p">${me.promo ? `<span class="old">${x.rub_full} ₽</span>` : ''}${x.rub} ₽<div class="muted small" style="font-weight:600">${x.stars} ⭐</div></div></button>`).join('')}</div>
+      <div class="p">${me.promo ? `<span class="old">${x.rub_full} ₽</span>` : ''}${x.rub} ₽<div class="muted small sum-ic" style="font-weight:600;gap:4px;justify-content:flex-end">${x.stars} ${ic('star', 13)}</div></div></button>`).join('')}</div>
     <div style="margin-top:14px">${promoBlock(me)}</div>
     <div class="card">
       <div class="h3">Оплата: ${esc(p.title)}</div><div class="muted small">Подписка активируется сразу после оплаты.</div>
-      <button class="btn" style="margin-top:12px" id="payStars">${ic('star',18,'#fff')} Telegram Stars — ${p.stars} ⭐</button>
+      <button class="btn" style="margin-top:12px" id="payStars">${ic('star',18,'#fff')} Telegram Stars — ${p.stars}</button>
       ${me.crypto_enabled ? `<button class="btn sec" style="margin-top:10px" id="payCrypto">${ic('coin',18)} Криптовалюта — ${p.rub} ₽</button>` : ''}
       <p class="muted small center" style="margin:12px 0 0">Звёзды можно купить прямо в Telegram. Крипта — USDT или TON через @CryptoBot.</p>
       <p class="muted small center" style="margin:8px 0 0">Оплачивая, ты принимаешь <a href="#" data-doc="terms" style="color:inherit">Пользовательское соглашение</a> и <a href="#" data-doc="privacy" style="color:inherit">Политику конфиденциальности</a>.</p>
     </div>`;
-  if (S.pending) html += `<div class="card" id="pend"><div class="h3">⏳ Ждём оплату в CryptoBot</div>
+  if (S.pending) html += `<div class="card" id="pend"><div class="h3 sum-ic">${ic('clock', 18)} Ждём оплату в CryptoBot</div>
     <div class="muted small">Как только оплата пройдёт, подписка продлится автоматически.</div>
     <div class="btns"><button class="btn sec sm" id="pendOpen">Открыть счёт</button><button class="btn sm" id="pendCheck">Проверить</button></div></div>`;
   view.innerHTML = html;
@@ -548,7 +559,7 @@ async function payStars() {
     const {invoice_link} = await api('pay', {plan: S.plan, method: 'stars'});
     if (!tg || !tg.openInvoice) { openTg(invoice_link); return; }
     tg.openInvoice(invoice_link, async status => {
-      if (status === 'paid') { haptic('heavy'); toast('🎉 Оплата прошла!'); await waitRenew(); }
+      if (status === 'paid') { haptic('heavy'); toast('Оплата прошла!'); await waitRenew(); }
       else if (status === 'failed') toast('Оплата не прошла');
     });
   } catch (e) { toast(e.message); } finally { b.disabled = false; }
@@ -565,7 +576,7 @@ async function checkPending(manual) {
   if (!S.pending) return;
   try {
     const {status} = await api('payment/' + S.pending.payment_id);
-    if (status === 'paid') { S.pending = null; haptic('heavy'); toast('🎉 Оплата прошла!'); await loadMe(); go('home'); return true; }
+    if (status === 'paid') { S.pending = null; haptic('heavy'); toast('Оплата прошла!'); await loadMe(); go('home'); return true; }
     if (status === 'expired') { S.pending = null; toast('Счёт истёк, создай новый'); if (S.tab === 'buy') renderBuy(); return true; }
     if (manual) toast('Оплата пока не поступила');
   } catch (e) { if (manual) toast(e.message); }
@@ -651,7 +662,7 @@ async function loadAdmin() {
   if (S.tab === 'admin') renderAdmin();
 }
 function sumLine(d) {
-  const parts = Object.entries(d || {}).map(([m, v]) => `${m === 'stars' ? '⭐' : '🪙'} ${v.count} · ${v.sum}${m === 'stars' ? ' ⭐' : ' ₽'}`);
+  const parts = Object.entries(d || {}).map(([m, v]) => `${ic(m === 'stars' ? 'star' : 'coin', 14)} ${v.count} · ${v.sum}${m === 'stars' ? ' зв.' : ' ₽'}`);
   return parts.join('<br>') || '—';
 }
 function renderAdmin() {
@@ -668,7 +679,7 @@ function renderAdmin() {
     <div id="admUser"></div></div>`;
   if (S.admin.promos) html += promoAdminBlock();
   if (S.admin.payments) html += `<div class="card"><div class="h3" style="margin-bottom:8px">Последние оплаты</div>
-    ${S.admin.payments.map(p => `<div class="list-row"><span>${p.method === 'stars' ? '⭐' : '🪙'} ${esc(p.username ? '@' + p.username : p.tg_id)} · ${p.days} дн</span><span class="muted">${esc(p.amount)} · ${fmtDate(p.paid_at, true).replace(/ \d{4}/, '')}</span></div>`).join('') || '<div class="muted">Пока нет</div>'}</div>`;
+    ${S.admin.payments.map(p => `<div class="list-row"><span>${ic(p.method === 'stars' ? 'star' : 'coin', 14)} ${esc(p.username ? '@' + p.username : p.tg_id)} · ${p.days} дн</span><span class="muted">${esc(p.amount)} · ${fmtDate(p.paid_at, true).replace(/ \d{4}/, '')}</span></div>`).join('') || '<div class="muted">Пока нет</div>'}</div>`;
   view.innerHTML = html;
   $('#admRefresh').onclick = () => { S.admin = null; renderAdmin(); loadAdmin(); };
   $('#admFind').onclick = adminFind;
@@ -763,14 +774,14 @@ function renderAdminUser() {
     <div class="chips">${[3, 7, 30, 90].map(d => `<button class="chip" data-give="${d}">+${d}</button>`).join('')}</div>
     <div class="field"><input id="admDays" type="number" min="1" max="3650" placeholder="Своё количество дней"><button class="btn sm" id="admGive">Выдать</button></div>
     <div class="btns">${s.status === 'DISABLED'
-      ? '<button class="btn sec" id="admBan" data-en="1">✅ Включить VPN</button>'
-      : '<button class="btn danger" id="admBan" data-en="0">⛔ Отключить VPN</button>'}</div>
+      ? `<button class="btn sec" id="admBan" data-en="1">${ic('check', 17)} Включить VPN</button>`
+      : `<button class="btn danger" id="admBan" data-en="0">${ic('ban', 17, '#f87171')} Отключить VPN</button>`}</div>
     ${u.payments.length ? `<div class="h3" style="margin:14px 0 6px">Оплаты</div>${u.payments.map(p => `<div class="list-row"><span>#${p.id} ${esc(p.method)} · ${p.days} дн</span><span class="muted">${esc(p.amount)} · ${fmtDate(p.paid_at)}</span></div>`).join('')}` : ''}
   </div>`;
   const give = async days => {
     if (!(days > 0)) return toast('Укажи количество дней');
     if (!await confirmBox(`Выдать ${days} дн. пользователю ${u.tg_id}?`)) return;
-    try { await api('admin/give', {tg_id: u.tg_id, days}); haptic('medium'); toast(`✅ Выдано ${days} дн.`); S.adminUser = await api('admin/user?q=' + u.tg_id); renderAdminUser(); } catch (e) { toast(e.message); }
+    try { await api('admin/give', {tg_id: u.tg_id, days}); haptic('medium'); toast(`Выдано ${days} дн.`); S.adminUser = await api('admin/user?q=' + u.tg_id); renderAdminUser(); } catch (e) { toast(e.message); }
   };
   $('#admUser').querySelectorAll('[data-give]').forEach(b => b.onclick = () => give(+b.dataset.give));
   $('#admGive').onclick = () => give(parseInt($('#admDays').value, 10));

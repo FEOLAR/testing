@@ -10,6 +10,7 @@ from .config import settings
 from .db import Payment, Session, User, utcnow
 from .remnawave import panel, parse_dt
 from . import promo as promos, texts
+from .emoji import e
 
 log = logging.getLogger(__name__)
 
@@ -72,7 +73,7 @@ async def process_payment(bot: Bot, payment_id: int) -> bool:
         async with Session() as s:
             await s.execute(update(Payment).where(Payment.id == payment_id).values(status="grant_error"))
             await s.commit()
-        await notify_admins(bot, f"⚠️ Оплата #{payment_id} получена, но панель не ответила. "
+        await notify_admins(bot, f"{e('alert')} Оплата #{payment_id} получена, но панель не ответила. "
                                  f"Бот повторит выдачу автоматически.")
         return False
 
@@ -91,7 +92,7 @@ async def process_payment(bot: Bot, payment_id: int) -> bool:
         promo_note = f", промокод {p.code} −{p.percent}%" if p else ""
     await safe_send(bot, payment.tg_id, texts.paid(user, payment.days))
     await reward_referrer(bot, payment.tg_id)
-    await notify_admins(bot, f"💰 Оплата #{payment_id}: {payment.amount} от {payment.tg_id} ({payment.days} дн.{promo_note})")
+    await notify_admins(bot, f"{e('coin')} Оплата #{payment_id}: {payment.amount} от {payment.tg_id} ({payment.days} дн.{promo_note})")
     return True
 
 
@@ -235,7 +236,7 @@ async def admin_give(bot: Bot, tg_id: int, days: int) -> User:
         s.add(Payment(tg_id=tg_id, plan_code="admin", days=days, method="admin", amount="0",
                       status="paid", paid_at=utcnow()))
         await s.commit()
-    await safe_send(bot, tg_id, f"🎁 Вам начислено {days} дн. подписки. "
+    await safe_send(bot, tg_id, f"{e('gift')} Тебе начислено {days} дн. подписки. "
                                 f"Действует до {texts.fmt_date(user.expire_at)}.")
     return user
 
@@ -311,7 +312,7 @@ async def record_stars_payment(bot: Bot, tg_id: int, payload: str, amount: int, 
     if not payment_id:
         return "duplicate"
     if plan is None:
-        await notify_admins(bot, f"⚠️ Stars-оплата #{payment_id} с неизвестным тарифом: {payload}, user {tg_id}, "
+        await notify_admins(bot, f"{e('alert')} Stars-оплата #{payment_id} с неизвестным тарифом: {payload}, user {tg_id}, "
                                  f"charge {charge_id}. Выдай дни вручную: /give {tg_id} <дни>")
         return "unknown_plan"
     return "granted" if await process_payment(bot, payment_id) else "grant_error"
