@@ -28,6 +28,7 @@ ICONS: list[tuple[str, str]] = [  # (имя файла без .png, обычны
     ("settings", "⚙️"), ("bank", "🏦"), ("back", "⬅️"), ("app", "📱"), ("calendar", "📅"),
     ("trash", "🗑"), ("game", "🎮"), ("bot", "🤖"), ("apple", "🍏"), ("ticket", "🎟"),
     ("link", "🔗"), ("alert", "⚠️"), ("menu", "📋"),
+    ("play", "▶️"), ("ai", "✨"), ("infinity", "♾️"),
 ]
 FALLBACK = dict(ICONS)
 _ids: dict[str, str] = {}
@@ -43,7 +44,7 @@ ALIASES: dict[str, tuple[str, ...]] = {
     "key": ("🔑", "🗝"), "ok": ("✅", "✔"), "no": ("❌", "✖"), "clock": ("⏳", "⏰", "🕐", "⌛"),
     "rocket": ("🚀",), "lock": ("🔒", "🔐"), "wifi": ("📶", "🛜"), "refresh": ("🔄", "🔃", "♻"),
     "crown": ("👑",), "settings": ("⚙",), "bank": ("🏦",), "back": ("⬅", "◀", "🔙", "↩"),
-    "calendar": ("📅", "📆", "🗓"), "trash": ("🗑",), "game": ("🎮", "🕹"), "bot": ("🤖",), "apple": ("🍏", "🍎"), "ticket": ("🎟", "🎫", "🏷"), "link": ("🔗", "📎"), "alert": ("⚠", "❗", "‼"), "menu": ("📋", "🗂", "☰"),
+    "calendar": ("📅", "📆", "🗓"), "trash": ("🗑",), "game": ("🎮", "🕹"), "bot": ("🤖",), "apple": ("🍏", "🍎"), "ticket": ("🎟", "🎫", "🏷"), "link": ("🔗", "📎"), "alert": ("⚠", "❗", "‼"), "menu": ("📋", "🗂", "☰"), "play": ("▶", "📺", "🎬"), "ai": ("✨", "🧠", "🤖"), "infinity": ("♾", "∞"),
 }
 
 

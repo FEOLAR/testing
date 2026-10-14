@@ -1,4 +1,4 @@
-# WhiteHoleVPN — выжимка проекта (контрольная точка 14.10.2026, v33)
+# WhiteHoleVPN — выжимка проекта (контрольная точка 14.10.2026, v34)
 
 > Вставь этот файл в начало нового диалога. Отвечать по-русски, команды — готовые к копированию, однострочные
 > (у пользователя Windows PowerShell + SSH; многострочные вставки ломаются из-за bracketed paste).
@@ -12,7 +12,7 @@ VPN-сервис **WhiteHoleVPN** (раньше GalacticVPN), продажа ч�
 - `bot/app/` — бот (aiogram 3, aiohttp, SQLAlchemy async + PostgreSQL, Redis, docker compose).
 - `infra/add-node.sh` — установка новой ноды (Docker, remnanode NODE_PORT 2222, sub-proxy Caddy :9443, ufw); `bash add-node.sh test` — тест TLS.
 - `infra/bridge-nodes.sh` — мост в РФ: проверка нод, HAProxy (balance source) 443/8443, Caddy для подписки.
-- Последний архив: **whitehole-bot-v33.zip**.
+- Последний архив: **whitehole-bot-v34.zip**.
 
 ### Деплой бота (на сервере панели)
 ```
@@ -93,6 +93,9 @@ docker logs --tail 30 vpn-bot
 - Политика по 152-ФЗ: оператор, состав данных, цели, основания, третьи лица (Telegram, Platega, CryptoBot, хостинг, серверы в Европе), сроки, права, 10 рабочих дней на ответ.
 - Реквизиты подставляются из .env: SELLER_NAME, SELLER_INN, CONTACT_EMAIL (пусто — жёлтая пометка на странице). Подвал /info показывает реквизиты.
 - Исходник текстов: bot/docs-src/content.py → build.py (JSON для сайта) и mkdocx.js (Word).
+
+### v34
+- Приветствие, «О сервисе» и описание бота: YouTube в 8K, все ИИ-сервисы (ChatGPT, Gemini, Claude), «RU сайты и приложения дружат с нашим VPN», «Надёжно — защищённое соединение» (без «шифруется»), безлимитный трафик, умное подключение, живая поддержка. Новые иконки пака: play, ai, infinity.
 
 ### Цены
 `nano /root/vpn-shop/bot/.env` → строка `PLANS=дни:рубли:звёзды,...` → сохранить → `cd /root/vpn-shop/bot && docker compose up -d --build`.
