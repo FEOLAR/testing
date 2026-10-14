@@ -56,6 +56,12 @@ class Settings(BaseSettings):
     # Пусто — в инструкции для iPhone только обычный Happ + смена региона.
     happ_ios_ru_url: str = ""
 
+    # Реквизиты для юридических документов на сайте (Пользовательское соглашение, Политика конфиденциальности)
+    seller_name: str = ""       # ФИО самозанятого
+    seller_inn: str = ""        # ИНН
+    contact_email: str = ""     # e-mail для обращений
+    refund_full_days: int = 3   # полный возврат в течение N дней после первой оплаты
+
     plans: str = "30:199:150,90:549:400,180:999:750,365:1790:1350"
     trial_days: int = 3
     referral_bonus_days: int = 7

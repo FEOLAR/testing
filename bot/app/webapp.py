@@ -368,10 +368,13 @@ def _info_page(bot_username: str) -> str:
     trial = (f"Новым пользователям — {settings.trial_days} дн. бесплатно." if settings.trial_days > 0 else "")
     support = (f'<div class="h2">Поддержка</div><a class="btn sec" href="{escape(support_url(), quote=True)}">'
                f'💬 Написать в поддержку</a>' if settings.support_username else "")
+    seller = [x for x in (settings.seller_name and f"Самозанятый {settings.seller_name}",
+                          settings.seller_inn and f"ИНН {settings.seller_inn}", settings.contact_email) if x]
+    seller_line = escape(" · ".join(seller)) + "<br>" if seller else ""
     tpl = Template((WEB_DIR / "info.html").read_text(encoding="utf-8"))
     return tpl.safe_substitute(brand=escape(brand), brand_html=brand_html, bot=escape(bot_username or ""),
                                devices=settings.device_limit, plans_html="".join(rows),
-                               trial_note=escape(trial), support_html=support)
+                               trial_note=escape(trial), support_html=support, seller_line=seller_line)
 
 
 async def info(request: web.Request) -> web.Response:
@@ -382,21 +385,42 @@ async def info(request: web.Request) -> web.Response:
 LEGAL_DOCS = ("privacy", "terms")
 
 
-def _legal_page(name: str) -> str:
+def _legal_page(name: str, bot_username: str = "") -> str:
     import json
     from html import escape
     from string import Template
     doc = json.loads((WEB_DIR / "legal" / f"{name}.json").read_text(encoding="utf-8"))
     tpl = Template((WEB_DIR / "legal.html").read_text(encoding="utf-8"))
-    return tpl.safe_substitute(title=escape(doc["title"]), date=escape(doc["date"]), body=doc["body"],
+    body = doc["body"]
+    for key, value in legal_values(bot_username).items():
+        body = body.replace("{" + key + "}", value)
+    return tpl.safe_substitute(title=escape(doc["title"]), date=escape(doc["date"]), body=body,
                                brand=escape(settings.brand_name))
+
+
+def legal_values(bot_username: str) -> dict[str, str]:
+    """Подстановки в тексты документов. Незаполненные реквизиты подсвечиваются, чтобы их было видно."""
+    from html import escape
+    todo = lambda what: f'<mark class="todo">[{what}]</mark>'
+    return {
+        "seller_name": escape(settings.seller_name) or todo("ФИО — SELLER_NAME"),
+        "seller_inn": escape(settings.seller_inn) or todo("ИНН — SELLER_INN"),
+        "email": (f'<a href="mailto:{escape(settings.contact_email)}">{escape(settings.contact_email)}</a>'
+                  if settings.contact_email else todo("e-mail — CONTACT_EMAIL")),
+        "site": f'<a href="{escape(settings.site_url("info"))}">{escape(settings.site_url("info"))}</a>',
+        "bot": f'<a href="https://t.me/{escape(bot_username)}">@{escape(bot_username)}</a>',
+        "brand": escape(settings.brand_name),
+        "trial_days": str(settings.trial_days),
+        "devices": str(settings.device_limit),
+        "refund_days": str(settings.refund_full_days),
+    }
 
 
 async def legal(request: web.Request) -> web.Response:
     name = request.match_info["doc"]
     if name not in LEGAL_DOCS:
         raise web.HTTPNotFound()
-    return web.Response(text=_legal_page(name), content_type="text/html",
+    return web.Response(text=_legal_page(name, request.app["bot_username"]), content_type="text/html",
                         headers={"Cache-Control": "public, max-age=300"})
 
 
