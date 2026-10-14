@@ -1,4 +1,4 @@
-# WhiteHoleVPN — выжимка проекта (контрольная точка 14.10.2026, v34)
+# WhiteHoleVPN — выжимка проекта (контрольная точка 14.10.2026, v35)
 
 > Вставь этот файл в начало нового диалога. Отвечать по-русски, команды — готовые к копированию, однострочные
 > (у пользователя Windows PowerShell + SSH; многострочные вставки ломаются из-за bracketed paste).
@@ -12,7 +12,7 @@ VPN-сервис **WhiteHoleVPN** (раньше GalacticVPN), продажа ч�
 - `bot/app/` — бот (aiogram 3, aiohttp, SQLAlchemy async + PostgreSQL, Redis, docker compose).
 - `infra/add-node.sh` — установка новой ноды (Docker, remnanode NODE_PORT 2222, sub-proxy Caddy :9443, ufw); `bash add-node.sh test` — тест TLS.
 - `infra/bridge-nodes.sh` — мост в РФ: проверка нод, HAProxy (balance source) 443/8443, Caddy для подписки.
-- Последний архив: **whitehole-bot-v34.zip**.
+- Последний архив: **whitehole-bot-v35.zip**.
 
 ### Деплой бота (на сервере панели)
 ```
@@ -96,6 +96,9 @@ docker logs --tail 30 vpn-bot
 
 ### v34
 - Приветствие, «О сервисе» и описание бота: YouTube в 8K, все ИИ-сервисы (ChatGPT, Gemini, Claude), «RU сайты и приложения дружат с нашим VPN», «Надёжно — защищённое соединение» (без «шифруется»), безлимитный трафик, умное подключение, живая поддержка. Новые иконки пака: play, ai, infinity.
+
+### v35
+- Фикс: лимит подписи 1024 считался по сырому HTML (теги + <tg-emoji>), из-за чего приветствие, «Инструкция» и «App Store» уходили без картинки. Теперь ui.visible_len() считает видимый текст в UTF-16, как Telegram.
 
 ### Цены
 `nano /root/vpn-shop/bot/.env` → строка `PLANS=дни:рубли:звёзды,...` → сохранить → `cd /root/vpn-shop/bot && docker compose up -d --build`.

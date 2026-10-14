@@ -18,6 +18,19 @@ WEB = Path(__file__).resolve().parent / "web"
 WELCOME_PHOTO = WEB / "welcome.jpg"
 CAPTION_LIMIT = 1024
 
+
+def visible_len(html_text: str) -> int:
+    """Длина подписи так, как её считает Telegram: без HTML-тегов (в т.ч. <tg-emoji>), с раскрытыми &amp; и т.п.,
+    в UTF-16 единицах (эмодзи вне BMP = 2)."""
+    import html as _html
+    import re as _re
+    plain = _html.unescape(_re.sub(r"<[^>]+>", "", html_text))
+    return len(plain.encode("utf-16-le")) // 2
+
+
+def fits_caption(html_text: str) -> bool:
+    return visible_len(html_text) <= CAPTION_LIMIT
+
 # Баннеры разделов: имя -> файл. Заменить картинку = положить новый файл с тем же именем и пересобрать.
 SCREENS = {
     "welcome": WELCOME_PHOTO,
@@ -50,7 +63,7 @@ def _remember(name: str, msg: Message | None) -> None:
 async def send_screen(message: Message, text: str, markup: InlineKeyboardMarkup | None, photo: str = "welcome") -> None:
     """Новое сообщение-экран (после /start или когда старое нельзя отредактировать)."""
     media = _media(photo)
-    if media is None or len(text) > CAPTION_LIMIT:
+    if media is None or not fits_caption(text):
         await message.answer(text, reply_markup=markup, disable_web_page_preview=True)
         return
     try:
@@ -72,12 +85,12 @@ async def show(cb: CallbackQuery, text: str, reply_markup: InlineKeyboardMarkup 
     msg = cb.message
     try:
         if not msg.photo:
-            if _media(photo) is not None and len(text) <= CAPTION_LIMIT:
+            if _media(photo) is not None and fits_caption(text):
                 await send_screen(msg, text, reply_markup, photo)  # было текстом — возвращаем картинку
                 await _try_delete(msg)
             else:
                 await msg.edit_text(text, reply_markup=reply_markup, **kw)
-        elif len(text) > CAPTION_LIMIT or _media(photo) is None:
+        elif not fits_caption(text) or _media(photo) is None:
             await msg.answer(text, reply_markup=reply_markup, **kw)
             await _try_delete(msg)
         elif _unique.get(photo) == msg.photo[-1].file_unique_id:
