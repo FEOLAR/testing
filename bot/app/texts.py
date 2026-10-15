@@ -101,7 +101,8 @@ def service() -> str:
         f"{e('globe')} <b>Без лишних настроек</b> — российские сайты и приложения дружат с нашим VPN\n"
         f"{e('shield')} <b>Надёжно</b> — защищённое соединение, сервер выбирается автоматически\n"
         f"{e('phone')} <b>До {settings.device_limit} устройств</b> — iPhone, Android, Windows, macOS\n"
-        f"{e('card')} <b>От {cheapest} ₽ в месяц</b> — оплата Telegram Stars или криптовалютой\n"
+        f"{e('card')} <b>От {cheapest} ₽ в месяц</b> — оплата "
+        + ("картой, СБП, " if settings.card_enabled else "") + "Telegram Stars или криптовалютой\n"
         f"{e('support')} <b>Поддержка</b> — отвечаем прямо в Telegram\n\n"
         "Тарифы, инструкции и ответы на частые вопросы — на нашем сайте."
     )
@@ -170,6 +171,18 @@ def choose_method(plan: Plan, promo=None) -> str:
     rub, _ = price(plan, promo)
     tail = f"\nК оплате: <s>{plan.rub} ₽</s> <b>{rub} ₽</b> — промокод {escape(promo.code)}, −{promo.percent}%" if promo else ""
     return f"{title('card', 'Оплата')}\n\nТариф: <b>{plan.title}</b>{tail}\n\n<i>Как удобнее оплатить?</i>" + legal_note()
+
+
+def card_invoice(plan: Plan, rub: int | None = None) -> str:
+    return (
+        f"{title('card', 'Оплата картой или СБП')}\n\n"
+        f"Тариф: <b>{plan.title}</b>\nК оплате: <b><i>{rub or plan.rub} ₽</i></b>\n\n"
+        "<blockquote><b>1.</b> Нажми «Оплатить» — откроется защищённая страница оплаты.\n"
+        "<b>2.</b> Оплати картой любого банка или через СБП.\n"
+        "<b>3.</b> Вернись в бот — подписка включится сама в течение минуты.</blockquote>\n\n"
+        "<i>Счёт действует 2 часа. Если что-то пошло не так — нажми «Я оплатил — проверить» или напиши в поддержку.</i>"
+        + legal_note()
+    )
 
 
 def crypto_invoice(plan: Plan, rub: int | None = None) -> str:

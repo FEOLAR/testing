@@ -66,6 +66,14 @@ class Settings(BaseSettings):
     trial_days: int = 3
     referral_bonus_days: int = 7
 
+    # Platega — оплата картами и СБП. Пусто — способ не показывается.
+    platega_merchant_id: str = ""
+    platega_secret: str = ""
+    platega_url: str = "https://app.platega.io"
+    # Способ оплаты: 0 — клиент выбирает сам на странице Platega; 2 — СБП; 10 или 11 — банковские карты
+    platega_method: int = 0
+    platega_title: str = "Картой или СБП"   # надпись на кнопке оплаты
+
     cryptopay_token: str = ""
     cryptopay_testnet: bool = False
     cryptopay_assets: str = "USDT,TON"
@@ -106,6 +114,10 @@ class Settings(BaseSettings):
     def site_url(self, page: str) -> str:
         """Публичная страница сайта (info, terms, privacy) рядом с мини-аппом; пусто — если мини-апп не настроен."""
         return f"{self.miniapp_url.rstrip('/')}/{page}" if self.miniapp_url else ""
+
+    @property
+    def card_enabled(self) -> bool:
+        return bool(self.platega_merchant_id and self.platega_secret)
 
     @property
     def crypto_enabled(self) -> bool:

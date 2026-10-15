@@ -14,15 +14,15 @@ from aiogram import Bot
 from aiogram.types import LabeledPrice
 from aiogram.utils.web_app import safe_parse_webapp_init_data
 from aiohttp import web
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 
 from .config import settings
 from .keyboards import support_url
 from . import promo as promos
 from .db import Payment, Session, User
 from .remnawave import panel, parse_dt
-from .services import (activate_trial, admin_give, check_crypto_payment, collect_stats,
-                       create_crypto_payment, get_or_create_user, refresh_from_panel)
+from .services import (activate_trial, admin_give, apply_card_status, check_payment, collect_stats,
+                       create_card_payment, create_crypto_payment, get_or_create_user, refresh_from_panel)
 
 log = logging.getLogger(__name__)
 WEB_DIR = Path(__file__).parent / "web"
@@ -151,6 +151,8 @@ async def me(request: web.Request) -> web.Response:
         "plans": plans,
         "promo": {"code": promo.code, "percent": promo.percent} if promo else None,
         "crypto_enabled": settings.crypto_enabled,
+        "card_enabled": settings.card_enabled,
+        "card_title": settings.platega_title,
         "happ_ios_ru": settings.happ_ios_ru_url,
         "referral": await referral_info(bot_username, tg.id) if settings.referral_bonus_days > 0 else None,
     })
@@ -186,6 +188,13 @@ async def pay(request: web.Request) -> web.Response:
             prices=[LabeledPrice(label=plan.title, amount=stars)],
         )
         return web.json_response({"invoice_link": link})
+    if body.get("method") == "card":
+        if not settings.card_enabled:
+            return err("Оплата картой пока недоступна")
+        payment = await create_card_payment(user.tg_id, plan, promo, request.app["bot_username"])
+        if payment is None:
+            return err("Платёжный сервис сейчас недоступен, попробуй другой способ или позже")
+        return web.json_response({"payment_id": payment.id, "pay_url": payment.pay_url})
     if body.get("method") == "crypto":
         if not settings.crypto_enabled:
             return err("Оплата криптой отключена")
@@ -217,7 +226,7 @@ async def payment_status(request: web.Request) -> web.Response:
     if not payment or payment.tg_id != request["tg"].id:
         return err("Счёт не найден", 404)
     try:
-        status = await check_crypto_payment(request.app["bot"], payment)
+        status = await check_payment(request.app["bot"], payment)
     except Exception:
         log.exception("crypto check failed")
         status = "pending"
@@ -303,7 +312,7 @@ async def admin_recent(request: web.Request) -> web.Response:
     async with Session() as s:
         rows = (await s.execute(
             select(Payment, User.username).join(User, User.tg_id == Payment.tg_id, isouter=True)
-            .where(Payment.status == "paid", or_(Payment.method == "stars", Payment.method == "crypto"))
+            .where(Payment.status == "paid", Payment.method.in_(("stars", "crypto", "card")))
             .order_by(Payment.paid_at.desc()).limit(20))).all()
     return web.json_response({"payments": [{
         "id": p.id, "tg_id": p.tg_id, "username": u, "method": p.method, "amount": p.amount,
@@ -343,6 +352,33 @@ async def admin_promo_uses(request: web.Request) -> web.Response:
     return web.json_response({"uses": await promos.uses(int(request.match_info["pid"]))})
 
 
+# ---------- Platega: уведомление об оплате ----------
+
+async def platega_callback(request: web.Request) -> web.Response:
+    """POST от Platega при смене статуса платежа. Адрес указывается в личном кабинете Platega."""
+    from .platega import callback_authentic
+    if not settings.card_enabled or not callback_authentic(request.headers):
+        log.warning("platega callback rejected from %s", request.remote)
+        return web.Response(status=401, text="unauthorized")
+    try:
+        data = await request.json()
+    except Exception:
+        return web.Response(status=400, text="bad json")
+    tid, status = str(data.get("id") or data.get("transactionId") or ""), str(data.get("status") or "").upper()
+    async with Session() as s:
+        payment = (await s.execute(select(Payment).where(Payment.method == "card", Payment.external_id == tid))
+                   ).scalars().first()
+        if payment is None and str(data.get("payload") or "").startswith("pay:"):
+            pid = str(data["payload"])[4:]
+            payment = await s.get(Payment, int(pid)) if pid.isdigit() else None
+    if payment is None:
+        log.warning("platega callback: unknown transaction %s (%s)", tid, status)
+        return web.Response(text="ok")  # 200, чтобы Platega не повторяла бесконечно
+    log.info("platega callback: payment %s transaction %s status %s", payment.id, tid, status)
+    await apply_card_status(request.app["bot"], payment, status, data.get("amount"))
+    return web.Response(text="ok")
+
+
 # ---------- страница ----------
 
 async def index(request: web.Request) -> web.FileResponse:
@@ -374,7 +410,8 @@ def _info_page(bot_username: str) -> str:
     tpl = Template((WEB_DIR / "info.html").read_text(encoding="utf-8"))
     return tpl.safe_substitute(brand=escape(brand), brand_html=brand_html, bot=escape(bot_username or ""),
                                devices=settings.device_limit, plans_html="".join(rows),
-                               trial_note=escape(trial), support_html=support, seller_line=seller_line)
+                               trial_note=escape(trial), support_html=support, seller_line=seller_line,
+                               pay_methods=("картой, СБП, " if settings.card_enabled else "") + "Telegram Stars или криптовалюта")
 
 
 async def info(request: web.Request) -> web.Response:
@@ -473,6 +510,7 @@ def build_app(bot: Bot, bot_username: str) -> web.Application:
     r.add_post(f"{PREFIX}/api/pay", pay)
     r.add_get(f"{PREFIX}/api/payment/{{pid:\\d+}}", payment_status)
     r.add_post(f"{PREFIX}/api/promo", promo_apply)
+    r.add_post(f"{PREFIX}/platega/callback", platega_callback)
     r.add_get(f"{PREFIX}/api/admin/promos", admin_promos)
     r.add_post(f"{PREFIX}/api/admin/promos/create", admin_promo_create)
     r.add_post(f"{PREFIX}/api/admin/promos/update", admin_promo_update)

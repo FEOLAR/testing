@@ -90,6 +90,8 @@ async def main() -> None:
         await web_runner.cleanup()
         await panel.close()
         await crypto.close()
+        from .platega import platega
+        await platega.close()
         await bot.session.close()
         if legacy_bot:
             await legacy_bot.session.close()

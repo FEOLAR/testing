@@ -101,14 +101,18 @@ def plans(promo=None) -> M:
 def methods(plan, promo=None) -> M:
     from .promo import price
     rub, stars = price(plan, promo)
-    rows = [[btn("star", f"Telegram Stars — {stars}", callback_data=f"pay:stars:{plan.code}")]]
+    rows = []
+    if settings.card_enabled:
+        rows.append([btn("card", f"{settings.platega_title} — {rub} ₽", "success", callback_data=f"pay:card:{plan.code}")])
+    rows.append([btn("star", f"Telegram Stars — {stars}", callback_data=f"pay:stars:{plan.code}")])
     if settings.crypto_enabled:
         rows.append([btn("coin", f"Криптовалюта — {rub} ₽", callback_data=f"pay:crypto:{plan.code}")])
     rows.append([_back("buy")])
     return M(inline_keyboard=rows)
 
 
-def crypto_pay(url: str, payment_id: int) -> M:
+def invoice_pay(url: str, payment_id: int) -> M:
+    """Кнопки под выставленным счётом (карта или крипта): оплатить, проверить, в меню."""
     return M(inline_keyboard=[
         [btn("card", "Оплатить", "success", url=url)],
         [btn("refresh", "Я оплатил — проверить", callback_data=f"check:{payment_id}")],

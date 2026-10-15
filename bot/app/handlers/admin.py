@@ -51,7 +51,8 @@ async def stats(message: Message):
     st = await collect_stats()
 
     def fmt(d: dict) -> str:
-        return "; ".join(f"{m}: {v['count']} шт · {v['sum']} {'⭐' if m == 'stars' else '₽'}"
+        names = {"stars": "Stars", "crypto": "Крипта", "card": "Карта/СБП"}
+        return "; ".join(f"{names.get(m, m)}: {v['count']} шт · {v['sum']} {'⭐' if m == 'stars' else '₽'}"
                          for m, v in d.items()) or "—"
 
     await message.answer(

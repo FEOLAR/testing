@@ -18,6 +18,19 @@ from .services import notify_admins, pending_crypto_payments, process_payment, r
 log = logging.getLogger(__name__)
 
 
+async def poll_card(bot: Bot) -> None:
+    """Запасная проверка счетов Platega (если callback не дошёл): статус каждого неоплаченного счёта."""
+    if not settings.card_enabled:
+        return
+    from .services import check_card_payment, pending_card_payments
+    for p in await pending_card_payments():
+        try:
+            await check_card_payment(bot, p)
+        except Exception:
+            log.exception("platega status check failed for payment %s", p.id)
+            return
+
+
 async def poll_crypto(bot: Bot) -> None:
     """Проверяем неоплаченные счета CryptoBot."""
     if not settings.crypto_enabled:
@@ -116,6 +129,7 @@ def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
     sched = AsyncIOScheduler(timezone="UTC")
     opts = dict(max_instances=1, coalesce=True, args=[bot])
     sched.add_job(poll_crypto, "interval", seconds=20, **opts)
+    sched.add_job(poll_card, "interval", seconds=30, **opts)
     sched.add_job(retry_failed_grants, "interval", minutes=2, **opts)
     sched.add_job(reminders, "interval", minutes=1, **opts)
     sched.add_job(sync_from_panel, "interval", hours=1, **opts)

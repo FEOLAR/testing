@@ -11,7 +11,7 @@ from .. import keyboards as kb, promo as promos, texts, ui
 from ..config import settings
 from ..emoji import e
 from ..db import Payment, Session
-from ..services import check_crypto_payment, create_crypto_payment, record_stars_payment
+from ..services import check_payment, create_card_payment, create_crypto_payment, record_stars_payment
 
 router = Router()
 log = logging.getLogger(__name__)
@@ -109,6 +109,23 @@ async def stars_paid(message: Message):
         await message.answer("Оплата получена, подписку активирует администратор в ближайшее время.")
 
 
+# ---------- Platega: карта / СБП ----------
+
+@router.callback_query(F.data.startswith("pay:card:"))
+async def pay_card(cb: CallbackQuery):
+    plan = settings.plan(cb.data.split(":")[2])
+    if not plan or not settings.card_enabled:
+        return await cb.answer("Недоступно", show_alert=True)
+    await cb.answer("Создаю счёт…")
+    promo = await promos.current(cb.from_user.id)
+    payment = await create_card_payment(cb.from_user.id, plan, promo, (await cb.bot.me()).username)
+    if payment is None:
+        return await cb.message.answer(f"{e('no')} Платёжный сервис сейчас недоступен. Попробуй через пару минут "
+                                       "или выбери другой способ оплаты.")
+    await ui.show(cb, texts.card_invoice(plan, promos.price(plan, promo)[0]),
+                  reply_markup=kb.invoice_pay(payment.pay_url, payment.id), photo="tariffs")
+
+
 # ---------- CryptoBot ----------
 
 @router.callback_query(F.data.startswith("pay:crypto:"))
@@ -121,7 +138,7 @@ async def pay_crypto(cb: CallbackQuery):
     if payment is None:
         return await cb.answer("CryptoBot сейчас недоступен, попробуй Stars или позже.", show_alert=True)
     await ui.show(cb, texts.crypto_invoice(plan, promos.price(plan, promo)[0]),
-                  reply_markup=kb.crypto_pay(payment.pay_url, payment.id), photo="tariffs")
+                  reply_markup=kb.invoice_pay(payment.pay_url, payment.id), photo="tariffs")
     await cb.answer()
 
 
@@ -139,9 +156,9 @@ async def check_crypto(cb: CallbackQuery):
     if payment.status != "pending":
         return await cb.answer("Счёт истёк. Создай новый.", show_alert=True)
     try:
-        status = await check_crypto_payment(cb.bot, payment)
+        status = await check_payment(cb.bot, payment)
     except Exception:
-        log.exception("cryptopay getInvoices failed")
+        log.exception("payment check failed")
         return await cb.answer("Не удалось проверить, попробуй через минуту", show_alert=True)
     if status == "paid":
         await cb.answer("Оплата найдена!")

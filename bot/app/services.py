@@ -203,6 +203,92 @@ async def create_crypto_payment(tg_id: int, plan, promo=None) -> Payment | None:
         return payment
 
 
+# ---------- Platega (карты / СБП) ----------
+
+CARD_INVOICE_TTL = timedelta(hours=2)   # неоплаченный счёт считаем истёкшим через 2 часа
+
+
+async def create_card_payment(tg_id: int, plan, promo=None, bot_username: str = "") -> Payment | None:
+    """Создаёт счёт Platega (со скидкой по промокоду). None — если Platega недоступна."""
+    from .platega import platega
+    rub, _ = promos.price(plan, promo)
+    async with Session() as s:
+        payment = Payment(tg_id=tg_id, plan_code=plan.code, days=plan.days, method="card",
+                          amount=f"{rub} RUB", promo_id=promo.id if promo else None)
+        s.add(payment)
+        await s.commit()
+        try:
+            inv = await platega.create(
+                rub=rub, description=f"{settings.brand_name}: подписка {plan.title}",
+                payload=f"pay:{payment.id}", user_id=tg_id,
+                return_url=f"https://t.me/{bot_username}" if bot_username else (settings.site_url("info") or "https://t.me"),
+            )
+        except Exception:
+            log.exception("platega create failed")
+            payment.status = "expired"
+            await s.commit()
+            return None
+        payment.external_id, payment.pay_url = inv["id"], inv["url"]
+        await s.commit()
+        return payment
+
+
+async def apply_card_status(bot: Bot, payment: Payment, status: str, amount: float | None = None) -> str:
+    """Применяет статус Platega к нашему платежу. Возвращает paid | pending | expired."""
+    from .platega import FAILED, PAID
+    if status in PAID:
+        if amount is not None and payment.amount.endswith("RUB") and float(amount) + 0.01 < int(payment.amount.split()[0]):
+            await notify_admins(bot, f"{e('alert')} Platega: по счёту #{payment.id} пришло {amount} ₽ вместо "
+                                     f"{payment.amount}. Подписка не выдана — проверь в кабинете Platega.")
+            return "pending"
+        await process_payment(bot, payment.id)
+        return "paid"
+    if status == "CHARGEBACKED":
+        await notify_admins(bot, f"{e('alert')} Platega: возврат через банк (chargeback) по счёту #{payment.id}, "
+                                 f"пользователь {payment.tg_id}, {payment.amount}.")
+        return "paid" if payment.status == "paid" else "expired"
+    if status in FAILED and payment.status == "pending":
+        async with Session() as s:
+            await s.execute(update(Payment).where(Payment.id == payment.id, Payment.status == "pending")
+                            .values(status="expired"))
+            await s.commit()
+        return "expired"
+    return "pending"
+
+
+async def check_card_payment(bot: Bot, payment: Payment) -> str:
+    from .platega import platega
+    if payment.status == "paid":
+        return "paid"
+    if payment.status in ("processing", "grant_error"):
+        return "pending"
+    if payment.status != "pending" or not payment.external_id:
+        return "expired"
+    status = await platega.status(payment.external_id)
+    result = await apply_card_status(bot, payment, status)
+    if result == "pending" and utcnow() - payment.created_at > CARD_INVOICE_TTL:
+        async with Session() as s:
+            await s.execute(update(Payment).where(Payment.id == payment.id, Payment.status == "pending")
+                            .values(status="expired"))
+            await s.commit()
+        return "expired"
+    return result
+
+
+async def pending_card_payments() -> list[Payment]:
+    async with Session() as s:
+        res = await s.execute(select(Payment).where(Payment.method == "card", Payment.status == "pending",
+                                                    Payment.external_id.is_not(None)))
+        return list(res.scalars())
+
+
+async def check_payment(bot: Bot, payment: Payment) -> str:
+    """Проверка любого счёта с внешней оплатой (крипта, карта)."""
+    if payment.method == "card":
+        return await check_card_payment(bot, payment)
+    return await check_crypto_payment(bot, payment)
+
+
 async def check_crypto_payment(bot: Bot, payment: Payment) -> str:
     """Проверяет счёт в CryptoBot. Возвращает paid | pending | expired."""
     from .cryptopay import crypto

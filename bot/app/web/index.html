@@ -534,12 +534,13 @@ function renderBuy() {
     <div style="margin-top:14px">${promoBlock(me)}</div>
     <div class="card">
       <div class="h3">Оплата: ${esc(p.title)}</div><div class="muted small">Подписка активируется сразу после оплаты.</div>
-      <button class="btn" style="margin-top:12px" id="payStars">${ic('star',18,'#fff')} Telegram Stars — ${p.stars}</button>
+      ${me.card_enabled ? `<button class="btn" style="margin-top:12px" id="payCard">${ic('card',18,'#fff')} ${esc(me.card_title)} — ${p.rub} ₽</button>` : ''}
+      <button class="btn ${me.card_enabled ? 'sec' : ''}" style="margin-top:${me.card_enabled ? 10 : 12}px" id="payStars">${ic('star',18, me.card_enabled ? 'currentColor' : '#fff')} Telegram Stars — ${p.stars}</button>
       ${me.crypto_enabled ? `<button class="btn sec" style="margin-top:10px" id="payCrypto">${ic('coin',18)} Криптовалюта — ${p.rub} ₽</button>` : ''}
-      <p class="muted small center" style="margin:12px 0 0">Звёзды можно купить прямо в Telegram. Крипта — USDT или TON через @CryptoBot.</p>
+      <p class="muted small center" style="margin:12px 0 0">${me.card_enabled ? 'Карты любых банков и СБП — через защищённую страницу оплаты. ' : ''}Звёзды можно купить прямо в Telegram. Крипта — через @CryptoBot.</p>
       <p class="muted small center" style="margin:8px 0 0">Оплачивая, ты принимаешь <a href="#" data-doc="terms" style="color:inherit">Пользовательское соглашение</a> и <a href="#" data-doc="privacy" style="color:inherit">Политику конфиденциальности</a>.</p>
     </div>`;
-  if (S.pending) html += `<div class="card" id="pend"><div class="h3 sum-ic">${ic('clock', 18)} Ждём оплату в CryptoBot</div>
+  if (S.pending) html += `<div class="card" id="pend"><div class="h3 sum-ic">${ic('clock', 18)} Ждём оплату${S.pending.method === 'card' ? '' : ' в CryptoBot'}</div>
     <div class="muted small">Как только оплата пройдёт, подписка продлится автоматически.</div>
     <div class="btns"><button class="btn sec sm" id="pendOpen">Открыть счёт</button><button class="btn sm" id="pendCheck">Проверить</button></div></div>`;
   view.innerHTML = html;
@@ -551,6 +552,7 @@ function renderBuy() {
   if (po) po.onclick = () => promoSet('');
   $('#payStars').onclick = payStars;
   const pc = $('#payCrypto'); if (pc) pc.onclick = payCrypto;
+  const pk = $('#payCard'); if (pk) pk.onclick = payCard;
   if (S.pending) { $('#pendOpen').onclick = () => openTg(S.pending.pay_url); $('#pendCheck').onclick = () => checkPending(true); }
 }
 async function payStars() {
@@ -563,6 +565,14 @@ async function payStars() {
       else if (status === 'failed') toast('Оплата не прошла');
     });
   } catch (e) { toast(e.message); } finally { b.disabled = false; }
+}
+async function payCard() {
+  const b = $('#payCard'); b.disabled = true;
+  try {
+    S.pending = await api('pay', {plan: S.plan, method: 'card'});
+    S.pending.started = Date.now(); S.pending.method = 'card';
+    openExternal(S.pending.pay_url); renderBuy(); pollPending();
+  } catch (e) { toast(e.message); b.disabled = false; }
 }
 async function payCrypto() {
   const b = $('#payCrypto'); b.disabled = true;
@@ -662,7 +672,7 @@ async function loadAdmin() {
   if (S.tab === 'admin') renderAdmin();
 }
 function sumLine(d) {
-  const parts = Object.entries(d || {}).map(([m, v]) => `${ic(m === 'stars' ? 'star' : 'coin', 14)} ${v.count} · ${v.sum}${m === 'stars' ? ' зв.' : ' ₽'}`);
+  const parts = Object.entries(d || {}).map(([m, v]) => `${ic({stars: 'star', card: 'card'}[m] || 'coin', 14)} ${v.count} · ${v.sum}${m === 'stars' ? ' зв.' : ' ₽'}`);
   return parts.join('<br>') || '—';
 }
 function renderAdmin() {
@@ -679,7 +689,7 @@ function renderAdmin() {
     <div id="admUser"></div></div>`;
   if (S.admin.promos) html += promoAdminBlock();
   if (S.admin.payments) html += `<div class="card"><div class="h3" style="margin-bottom:8px">Последние оплаты</div>
-    ${S.admin.payments.map(p => `<div class="list-row"><span>${ic(p.method === 'stars' ? 'star' : 'coin', 14)} ${esc(p.username ? '@' + p.username : p.tg_id)} · ${p.days} дн</span><span class="muted">${esc(p.amount)} · ${fmtDate(p.paid_at, true).replace(/ \d{4}/, '')}</span></div>`).join('') || '<div class="muted">Пока нет</div>'}</div>`;
+    ${S.admin.payments.map(p => `<div class="list-row"><span>${ic({stars: 'star', card: 'card'}[p.method] || 'coin', 14)} ${esc(p.username ? '@' + p.username : p.tg_id)} · ${p.days} дн</span><span class="muted">${esc(p.amount)} · ${fmtDate(p.paid_at, true).replace(/ \d{4}/, '')}</span></div>`).join('') || '<div class="muted">Пока нет</div>'}</div>`;
   view.innerHTML = html;
   $('#admRefresh').onclick = () => { S.admin = null; renderAdmin(); loadAdmin(); };
   $('#admFind').onclick = adminFind;
