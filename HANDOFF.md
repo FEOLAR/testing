@@ -1,4 +1,4 @@
-# WhiteHoleVPN — выжимка проекта (контрольная точка 15.10.2026, v36)
+# WhiteHoleVPN — выжимка проекта (контрольная точка 15.10.2026, v37)
 
 > Вставь этот файл в начало нового диалога. Отвечать по-русски, команды — готовые к копированию, однострочные
 > (у пользователя Windows PowerShell + SSH; многострочные вставки ломаются из-за bracketed paste).
@@ -12,7 +12,7 @@ VPN-сервис **WhiteHoleVPN** (раньше GalacticVPN), продажа ч�
 - `bot/app/` — бот (aiogram 3, aiohttp, SQLAlchemy async + PostgreSQL, Redis, docker compose).
 - `infra/add-node.sh` — установка новой ноды (Docker, remnanode NODE_PORT 2222, sub-proxy Caddy :9443, ufw); `bash add-node.sh test` — тест TLS.
 - `infra/bridge-nodes.sh` — мост в РФ: проверка нод, HAProxy (balance source) 443/8443, Caddy для подписки.
-- Последний архив: **whitehole-bot-v36.zip**.
+- Последний архив: **whitehole-bot-v37.zip**.
 
 ### Деплой бота (на сервере панели)
 ```
@@ -106,6 +106,10 @@ docker logs --tail 30 vpn-bot
 - Callback: POST https://77-91-95-53.sslip.io:9443/miniapp/platega/callback — проверка X-MerchantId/X-Secret, CONFIRMED → process_payment (идемпотентно), сумма меньше счёта → не выдаём, уведомляем админа; CANCELED/EXPIRED → expired; CHARGEBACKED → уведомление. Запасной опрос статуса каждые 30 с; счёт истекает через 2 ч.
 - Payment.method="card", payload "pay:<id>", metadata.userId = tg_id. Промокоды работают. Кнопка «Картой или СБП» первая (зелёная) в боте и мини-аппе.
 - 15.10.2026: пользователь подтвердил — оплата через Platega работает в боевом режиме.
+
+### v37
+- «Инструкция»: шаги со ссылками и советы «VPN выключается сам?» в цитатах, курсив про сервер «📱». «Что умеет бот»: глаголы в будущем времени (Даст, Примет, Покажет…), заголовок жирный без подчёркивания.
+- Реклама на YouTube: из-за выходных IP в ЕС (до этого в тяжёлом профиле, вероятно, был блок geosite:category-ads-all). Решение — правило блокировки рекламы в Xray-конфиге нод (панель → Config profiles), не в профиле Happ (память iOS).
 
 ### Цены
 `nano /root/vpn-shop/bot/.env` → строка `PLANS=дни:рубли:звёзды,...` → сохранить → `cd /root/vpn-shop/bot && docker compose up -d --build`.

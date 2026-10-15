@@ -79,15 +79,15 @@ def welcome(name: str | None) -> str:
 
 def about() -> str:
     return (
-        f"{title('bot', 'Что умеет бот')}\n\n"
-        f"{e('gift')} Дать попробовать VPN бесплатно\n"
-        f"{e('card')} Принять оплату и продлить подписку\n"
-        f"{e('book')} Показать, как подключиться на iPhone, Android и компьютере\n"
-        f"{e('user')} Показать, сколько дней осталось, и выдать ссылку для приложения\n"
-        f"{e('refresh')} Сбросить устройства, если хочешь подключить новые\n"
-        f"{e('clock')} Напомнить, что подписка скоро закончится\n"
-        f"{e('friends')} Начислить бонусные дни за приглашённых друзей\n"
-        f"{e('support')} Связать с поддержкой, если что-то не получается"
+        f"{e('bot')} <b>Что умеет бот</b>\n\n"
+        f"{e('gift')} Даст попробовать VPN бесплатно\n"
+        f"{e('card')} Примет оплату и продлит подписку\n"
+        f"{e('book')} Покажет, как подключиться на твоём устройстве\n"
+        f"{e('clock')} Напомнит о скором окончании подписки\n"
+        f"{e('user')} Выдаст ссылку для приложения\n"
+        f"{e('refresh')} Сбросит устройства, если хочешь подключить новые\n"
+        f"{e('friends')} Начислит бонусные дни за приглашённых друзей\n"
+        f"{e('support')} Свяжет с поддержкой, если что-то не получается"
     )
 
 
@@ -221,17 +221,21 @@ def howto() -> str:
     return (
         f"{title('book', 'Как подключиться — 3 шага')}\n\n"
         "<b>1. Скачай приложение Happ</b>\n"
+        "<blockquote>"
         f"• iPhone, iPad, Mac — <a href='{escape(settings.happ_ios_ru_url or _IOS_URL, quote=True)}'>App Store</a>. "
         "Не находится? Нажми кнопку ниже.\n"
         "• Android — <a href='https://github.com/Happ-proxy/happ-android/releases/latest/download/Happ.apk'>скачай Happ.apk</a>, "
         "открой файл и нажми «Установить».\n"
-        "• Windows — <a href='https://github.com/Happ-proxy/happ-desktop/releases'>Happ для Windows</a>\n\n"
+        "• Windows — <a href='https://github.com/Happ-proxy/happ-desktop/releases'>Happ для Windows</a>"
+        "</blockquote>\n\n"
         "<b>2. Скопируй ссылку</b> — в разделе «Моя подписка» нажми на неё.\n\n"
         "<b>3. Добавь её в Happ</b> — нажми «+» → «Вставить из буфера», затем большую кнопку включения.\n\n"
-        "На телефоне выбирай сервер со значком 📱.\n\n"
+        "<i>На телефоне выбирай сервер со значком «📱»</i>\n\n"
         "<b>VPN выключается сам?</b>\n"
-        "• iPhone: Настройки → Основные → VPN → ⓘ у Happ → «Подключать по запросу».\n"
-        f"• Android: Настройки → VPN → {e('settings')} у Happ → «Постоянный VPN».\n\n"
+        "<blockquote>"
+        "• iPhone: Настройки → Основные → VPN → ⓘ у Happ → «Подключать по запросу».\n\n"
+        f"• Android: Настройки → VPN → {e('settings')} у Happ → «Постоянный VPN»."
+        "</blockquote>\n\n"
         "Что-то не работает — обнови подписку в Happ (потяни список серверов вниз) или напиши в поддержку."
     )
 
