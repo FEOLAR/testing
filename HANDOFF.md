@@ -105,6 +105,7 @@ docker logs --tail 30 vpn-bot
 - .env: PLATEGA_MERCHANT_ID, PLATEGA_SECRET, (PLATEGA_METHOD, PLATEGA_TITLE). Пусто — кнопка не показывается.
 - Callback: POST https://77-91-95-53.sslip.io:9443/miniapp/platega/callback — проверка X-MerchantId/X-Secret, CONFIRMED → process_payment (идемпотентно), сумма меньше счёта → не выдаём, уведомляем админа; CANCELED/EXPIRED → expired; CHARGEBACKED → уведомление. Запасной опрос статуса каждые 30 с; счёт истекает через 2 ч.
 - Payment.method="card", payload "pay:<id>", metadata.userId = tg_id. Промокоды работают. Кнопка «Картой или СБП» первая (зелёная) в боте и мини-аппе.
+- 15.10.2026: пользователь подтвердил — оплата через Platega работает в боевом режиме.
 
 ### Цены
 `nano /root/vpn-shop/bot/.env` → строка `PLANS=дни:рубли:звёзды,...` → сохранить → `cd /root/vpn-shop/bot && docker compose up -d --build`.
