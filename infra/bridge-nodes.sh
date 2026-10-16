@@ -1,12 +1,14 @@
 #!/bin/bash
-# GalacticVPN: настроить мост на несколько нод сразу.
+# WhiteHoleVPN: настроить мост (подходит для любого моста — адрес определяется сам) на несколько нод сразу.
 #   bash bridge-nodes.sh 151.243.225.123 1.2.3.4 ...
 # VPN (443/8443): HAProxy раскидывает клиентов по нодам (один клиент — всегда одна нода)
 #                 и сам убирает упавшую ноду.
 # Подписка (9443): Caddy ходит на sub-proxy первой живой ноды, при сбое — на следующую.
 set -e
 [ $# -ge 1 ] || { echo "Укажите IP нод: bash bridge-nodes.sh IP1 IP2 ..."; exit 1; }
-BRIDGE_DOMAIN=77-91-95-53.sslip.io
+MYIP=$(curl -4 -s -m 10 https://api.ipify.org || hostname -I | awk '{print $1}')
+BRIDGE_DOMAIN=$(echo "$MYIP" | tr . -).sslip.io
+echo "== Мост: $MYIP ($BRIDGE_DOMAIN)"
 
 echo "== Проверка нод из РФ (TLS на 443)..."
 for ip in "$@"; do
@@ -16,8 +18,16 @@ done
 read -r -p "Продолжить? (y/n) " ok; [ "$ok" = "y" ] || exit 0
 
 export DEBIAN_FRONTEND=noninteractive
-command -v haproxy >/dev/null || apt-get install -y -qq haproxy >/dev/null
-cp /etc/caddy/Caddyfile /etc/caddy/Caddyfile.bak.$(date +%s)
+if ! command -v haproxy >/dev/null || ! command -v caddy >/dev/null; then
+    echo "== Ставлю HAProxy и Caddy..."
+    apt-get update -qq >/dev/null
+    apt-get install -y -qq haproxy caddy >/dev/null
+fi
+if command -v ufw >/dev/null && ufw status | grep -q "Status: active"; then
+    ufw allow 443/tcp >/dev/null; ufw allow 8443/tcp >/dev/null; ufw allow 9443/tcp >/dev/null; ufw allow 80/tcp >/dev/null
+fi
+mkdir -p /etc/caddy
+[ -f /etc/caddy/Caddyfile ] && cp /etc/caddy/Caddyfile /etc/caddy/Caddyfile.bak.$(date +%s)
 [ -f /etc/haproxy/haproxy.cfg ] && cp /etc/haproxy/haproxy.cfg /etc/haproxy/haproxy.cfg.bak.$(date +%s)
 
 S443=""; S8443=""; UP=""; n=1
@@ -80,7 +90,7 @@ caddy validate --config /etc/caddy/Caddyfile >/dev/null 2>&1
 echo "== Убираю старую пересылку iptables 443/8443 и включаю HAProxy..."
 iptables -t nat -S PREROUTING | grep -E -- '--dport (443|8443) .*DNAT' | sed 's/^-A/-D/' | while read -r r; do iptables -t nat $r; done
 systemctl enable haproxy >/dev/null 2>&1; systemctl restart haproxy
-systemctl restart caddy
+systemctl enable caddy >/dev/null 2>&1; systemctl restart caddy
 netfilter-persistent save >/dev/null 2>&1 || true
 sleep 5
 
