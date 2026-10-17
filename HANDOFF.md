@@ -137,3 +137,12 @@ docker logs --tail 30 vpn-bot
 - В чате ранее светились: root-пароль FI-2, Reality privateKey, токен CryptoBot (просил перевыпустить), UUID пользователя.
   Не повторять их; при случае — сменить пароль, перевыпустить ключ Reality (потребует обновления подписок).
 - Секреты не коммитить; `.env` в архивы не включается.
+
+## YouTube-реклама: итоги расследования (17.10.2026)
+- Причина: Google считает IP наших нод зарубежными (GL: FR-1=FR, GE-1=DE, панель=NL, FI-сервер Hostkey=FI). Реклама пропадает только при российском GL.
+- Конкурент без рекламы: обычный конфиг (всё через VPN, кроме RU-сайтов, UDP/443 block), выход 89.124.95.95 — AS216071 SERVERS TECH FZCO (VDSina, Амстердам), Google считает RU.
+- Проверено: прямой выход youtubei.googleapis.com / www.youtube.com с телефона убирает рекламу на Wi-Fi, но на мобильном интернете YouTube не грузится — клиентский вариант (профили test A–E) отвергнут. Старый профиль GalacticVPN RU-direct тоже с рекламой.
+- В Config Profile нод добавлено: блок geosite:category-ads-all и блок UDP/443 (QUIC). Оставить.
+- План: сервер с GL=RU (VDSina NL) → infra/yt-exit.sh (Shadowsocks-2022 :8388, доступ только FR-1/GE-1) → outbound YT_RU + balancer YT_BAL (fallbackTag DIRECT, observatory) для full:www.youtube.com, m.youtube.com, youtube.com, s.youtube.com, youtubei.googleapis.com. Альтернатива: сделать такой сервер полноценной нодой.
+- Кандидат в ноды: 194.164.235.8 (FI, 2 ядра, 4 ГБ, 464 Мбит/с, доступ из РФ OK) — нодой позже.
+- Новый мост 193.247.73.20 (ноды с него 200); infra/bridge-nodes.sh теперь универсальный.
