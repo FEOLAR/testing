@@ -146,3 +146,9 @@ docker logs --tail 30 vpn-bot
 - План: сервер с GL=RU (VDSina NL) → infra/yt-exit.sh (Shadowsocks-2022 :8388, доступ только FR-1/GE-1) → outbound YT_RU + balancer YT_BAL (fallbackTag DIRECT, observatory) для full:www.youtube.com, m.youtube.com, youtube.com, s.youtube.com, youtubei.googleapis.com. Альтернатива: сделать такой сервер полноценной нодой.
 - Кандидат в ноды: 194.164.235.8 (FI, 2 ядра, 4 ГБ, 464 Мбит/с, доступ из РФ OK) — нодой позже.
 - Новый мост 193.247.73.20 (ноды с него 200); infra/bridge-nodes.sh теперь универсальный.
+
+### YouTube без рекламы — РЕШЕНО (17.10.2026)
+- YouTube-выход: **217.149.26.98** (Timeweb Cloud, Нидерланды, GL=RU), Xray Shadowsocks-2022 :8388 (infra/yt-exit.sh), ufw пускает только FR-1/GE-1 (новые ноды добавлять в ufw на нём!).
+- Config Profile нод: outbound `YT_RU` (shadowsocks → 217.149.26.98:8388) + первое правило: geosite:youtube, doubleclick.net, googleadservices.com, googlesyndication.com, googletagservices.com, imasdk.googleapis.com → YT_RU. Остальное — исходный конфиг (без блока рекламы/QUIC, без balancer/observatory).
+- Только API-домены (www.youtube.com, youtubei) через выход — НЕ хватило для iPhone; нужен весь geosite:youtube.
+- Минус: если 217.149.26.98 упадёт — YouTube у всех перестанет работать (нет fallback). TODO: сервер мощнее/второй выход, fallback через balancer (проверять на мобильном интернете, не на домашнем Wi-Fi пользователя — там провайдер режет прямой TCP 443 к нодам).
