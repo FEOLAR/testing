@@ -42,12 +42,22 @@ SCREENS = {
     "support": WEB / "screens" / "support.jpg",
     "features": WEB / "screens" / "features.jpg",
     "profile": WEB / "screens" / "profile.jpg",
+    "channel": WEB / "screens" / "channel.jpg",   # бонус за подписку на канал
+    "review": WEB / "screens" / "review.jpg",     # отзывы
 }
+# Если своего баннера ещё нет — показываем этот (чтобы экран всё равно был с картинкой)
+FALLBACK_SCREEN = "welcome"
 _file_id: dict[str, str] = {}   # имя -> file_id после первой загрузки (дальше файл не перезаливается)
 _unique: dict[str, str] = {}    # имя -> file_unique_id, чтобы понять, какая картинка сейчас в сообщении
 
 
+def _resolve(name: str) -> str:
+    path = SCREENS.get(name)
+    return name if path and path.exists() else FALLBACK_SCREEN
+
+
 def _media(name: str):
+    name = _resolve(name)
     path = SCREENS.get(name)
     if not path or not path.exists():
         return None
@@ -55,6 +65,7 @@ def _media(name: str):
 
 
 def _remember(name: str, msg: Message | None) -> None:
+    name = _resolve(name)
     if msg is not None and getattr(msg, "photo", None):
         _file_id[name] = msg.photo[-1].file_id
         _unique[name] = msg.photo[-1].file_unique_id
@@ -71,7 +82,7 @@ async def send_screen(message: Message, text: str, markup: InlineKeyboardMarkup 
         _remember(photo, sent)
     except TelegramBadRequest:
         log.exception("screen photo %s failed, fallback to text", photo)
-        _file_id.pop(photo, None)
+        _file_id.pop(_resolve(photo), None)
         await message.answer(text, reply_markup=markup, disable_web_page_preview=True)
 
 
@@ -93,7 +104,7 @@ async def show(cb: CallbackQuery, text: str, reply_markup: InlineKeyboardMarkup 
         elif not fits_caption(text) or _media(photo) is None:
             await msg.answer(text, reply_markup=reply_markup, **kw)
             await _try_delete(msg)
-        elif _unique.get(photo) == msg.photo[-1].file_unique_id:
+        elif _unique.get(_resolve(photo)) == msg.photo[-1].file_unique_id:
             await msg.edit_caption(caption=text, reply_markup=reply_markup)  # картинка та же — меняем только текст
         else:
             edited = await msg.edit_media(InputMediaPhoto(media=_media(photo), caption=text), reply_markup=reply_markup)
@@ -113,3 +124,20 @@ async def _try_delete(msg: Message) -> None:
 async def show_welcome(cb: CallbackQuery, text: str, markup: InlineKeyboardMarkup) -> None:
     """Возврат в главное меню — снова фото чёрной дыры."""
     await show(cb, text, markup, photo="welcome")
+
+
+async def push_screen(bot, chat_id: int, text: str, markup: InlineKeyboardMarkup | None, photo: str) -> None:
+    """Экран сообщением «от бота» (рассылки, напоминания). Ошибки Telegram пробрасывает наружу."""
+    media = _media(photo)
+    if media is None or not fits_caption(text):
+        await bot.send_message(chat_id, text, reply_markup=markup, disable_web_page_preview=True)
+        return
+    try:
+        sent = await bot.send_photo(chat_id, media, caption=text, reply_markup=markup)
+        _remember(photo, sent)
+    except TelegramBadRequest as err:
+        if "chat not found" in str(err).lower():
+            raise
+        log.exception("push photo %s failed, fallback to text", photo)
+        _file_id.pop(_resolve(photo), None)
+        await bot.send_message(chat_id, text, reply_markup=markup, disable_web_page_preview=True)

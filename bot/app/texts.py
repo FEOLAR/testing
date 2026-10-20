@@ -284,6 +284,90 @@ def referral_bonus(days: int) -> str:
     return f"{e('gift')} Твой друг оформил подписку — тебе начислено <b>+{days} дн.</b>!"
 
 
+def _days(d: int) -> str:
+    return f"{d} {plural(d, 'день', 'дня', 'дней')}"
+
+
+# ---------- бонус за подписку на канал ----------
+
+def channel_button() -> str:
+    return f"+{_days(settings.channel_bonus_days)} за подписку на канал"
+
+
+def channel_offer() -> str:
+    d = settings.channel_bonus_days
+    return (
+        f"{title('gift', f'+{_days(d)} бесплатно')}\n\n"
+        f"Подпишись на наш Telegram-канал и получи <b><i>{_days(d)}</i></b> подписки в подарок.\n\n"
+        "<blockquote>"
+        f"{e('zap')} Новости сервиса и новые серверы\n"
+        f"{e('ticket')} Промокоды и скидки — только для подписчиков\n"
+        f"{e('info')} Если что-то сломается — первыми узнаете от нас"
+        "</blockquote>\n\n"
+        "<b>Как получить:</b>\n"
+        "1. Нажми «Подписаться на канал»\n"
+        "2. Вернись сюда и нажми «Я подписался»\n\n"
+        "<i>Бонус можно получить один раз.</i>"
+    )
+
+
+def channel_not_member() -> str:  # всплывающее окно, до 200 символов
+    return "Пока не вижу тебя в канале. Подпишись и нажми «Я подписался» ещё раз."
+
+
+def channel_ok(user) -> str:
+    d = settings.channel_bonus_days
+    return (
+        f"{title('gift', 'Бонус начислен!')}\n\n"
+        f"Спасибо за подписку! Тебе добавлено <b><i>+{_days(d)}</i></b>.\n"
+        f"Подписка активна до <b><i>{fmt_date(user.expire_at)}</i></b>\n\n"
+        f"{e('link')} Ссылка-подписка\n"
+        f'<pre><code class="language-копировать">{escape(user.sub_url or "")}</code></pre>\n\n'
+        "<i>Если Happ ещё не настроен — нажми «Инструкция».</i>"
+    )
+
+
+# ---------- отзывы ----------
+
+def review_ask() -> str:
+    return (
+        f"{title('star', 'Оставить отзыв')}\n\n"
+        f"Нам важно твоё мнение! Напиши <b>одним сообщением</b>, что нравится в {escape(settings.brand_name)} "
+        "и что стоит улучшить.\n\n"
+        "<blockquote>"
+        f"{e('zap')} Как скорость и стабильность\n"
+        f"{e('phone')} Удобно ли подключаться\n"
+        f"{e('info')} Чего не хватает"
+        "</blockquote>\n\n"
+        "<i>Можно приложить скриншот, видео или голосовое — просто отправь его сюда.</i>"
+    )
+
+
+def review_thanks() -> str:
+    return (
+        f"{title('star', 'Спасибо за отзыв!')}\n\n"
+        "Мы читаем каждый отзыв лично. Если в нём вопрос или проблема — поддержка напишет тебе.\n\n"
+        f"<i>Захочешь дополнить — кнопка «Оставить отзыв» есть в меню.</i>"
+    )
+
+
+def review_reminder() -> str:
+    return (
+        f"{title('star', f'Как тебе {escape(settings.brand_name)}?')}\n\n"
+        "Расскажи, всё ли устраивает — скорость, стабильность, подключение. "
+        "Отзыв займёт минуту и очень поможет нам стать лучше.\n\n"
+        "<i>Нажми кнопку ниже и напиши пару слов.</i>"
+    )
+
+
+def review_admin_header(user, active: bool) -> str:
+    who = escape(user.first_name or "без имени")
+    if user.username:
+        who += f" (@{escape(user.username)})"
+    sub = f"активна до {fmt_date(user.expire_at)}" if active else ("закончилась" if user.expire_at else "не было")
+    return f"{e('star')} <b>Новый отзыв</b> от {who}\nID <code>{user.tg_id}</code> · подписка: {sub}"
+
+
 # Напоминания перед окончанием подписки: (код, за сколько до конца)
 REMINDER_STAGES = [("24h", timedelta(hours=24)), ("12h", timedelta(hours=12)),
                    ("2h", timedelta(hours=2)), ("30m", timedelta(minutes=30))]

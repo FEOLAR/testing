@@ -12,7 +12,7 @@ from .config import settings
 from . import emoji
 from .cryptopay import crypto
 from .db import init_db
-from .handlers import admin, payments, user
+from .handlers import admin, engage, payments, user
 from .remnawave import panel
 from .scheduler import setup_scheduler
 from .webapp import start_webapp
@@ -36,7 +36,7 @@ async def main() -> None:
     import aiogram
     log.info("aiogram %s (Bot API %s)", aiogram.__version__, aiogram.__api_version__)
     dp = Dispatcher(storage=make_storage())
-    dp.include_routers(admin.router, payments.router, user.router)
+    dp.include_routers(admin.router, payments.router, engage.router, user.router)
 
     @dp.errors()
     async def on_error(event: ErrorEvent):

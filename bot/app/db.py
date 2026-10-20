@@ -36,6 +36,11 @@ class User(Base):
     notice: Mapped[str] = mapped_column(String(8), default="")
     # Промокод, который пользователь ввёл и ещё не использовал в оплате
     promo_id: Mapped[int | None] = mapped_column(Integer)
+    # Бонус за подписку на канал уже получен
+    channel_bonus: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Отзыв: когда оставил последний (None — ещё не оставлял) и когда последний раз напоминали
+    review_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    review_reminded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -97,6 +102,9 @@ MIGRATIONS = [
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS promo_id INTEGER",
     "ALTER TABLE payments ADD COLUMN IF NOT EXISTS promo_id INTEGER",
     "CREATE INDEX IF NOT EXISTS ix_payments_promo_id ON payments (promo_id)",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS channel_bonus BOOLEAN NOT NULL DEFAULT FALSE",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS review_at TIMESTAMPTZ",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS review_reminded_at TIMESTAMPTZ",
 ]
 
 

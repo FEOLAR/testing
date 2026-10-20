@@ -24,15 +24,19 @@ def _back(to: str = "menu", text: str = "Назад") -> B:
     return btn("back", text, callback_data=to)
 
 
-def main_menu(show_trial: bool) -> M:
+def main_menu(show_trial: bool, show_channel: bool = False) -> M:
+    from .texts import channel_button
     rows = []
     if show_trial and settings.trial_days > 0:
         rows.append([btn("gift", f"Попробовать {settings.trial_days} дня бесплатно", "success", callback_data="trial")])
+    if show_channel and settings.channel_name and settings.channel_bonus_days > 0:
+        rows.append([btn("gift", channel_button(), "success", callback_data="channel")])
     if settings.miniapp_url:
         rows.append([btn("app", "Открыть приложение", "primary", web_app=WebAppInfo(url=settings.miniapp_url))])
     rows += [
         [btn("bot", "Что умеет бот?", callback_data="about")],
         [btn("user", "Моя подписка", callback_data="profile")],
+        [btn("star", "Оставить отзыв", callback_data="review")],
         [btn("card", "Тарифы", callback_data="buy"), btn("book", "Инструкция", callback_data="howto")],
     ]
     if settings.referral_bonus_days > 0:
@@ -134,3 +138,15 @@ def profile(active: bool) -> M:
 
 def renew() -> M:
     return M(inline_keyboard=[[btn("card", "Продлить", "success", callback_data="buy")]])
+
+
+def channel() -> M:
+    return M(inline_keyboard=[
+        [btn("link", "Подписаться на канал", "primary", url=settings.channel_url)],
+        [btn("ok", "Я подписался — проверить", "success", callback_data="channel_check")],
+        [_back()],
+    ])
+
+
+def review_reminder() -> M:
+    return M(inline_keyboard=[[btn("star", "Оставить отзыв", "primary", callback_data="review")]])

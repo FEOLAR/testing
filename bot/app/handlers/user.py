@@ -39,7 +39,7 @@ async def start(message: Message, command: CommandObject, state: FSMContext):
                                        message.from_user.first_name, referrer_id=ref)
     await message.answer(texts.menu_hint(), reply_markup=kb.reply_menu())  # постоянная кнопка «Меню» внизу
     await ui.send_welcome(message, texts.welcome(message.from_user.first_name),
-                          kb.main_menu(show_trial=not user.trial_used))
+                          kb.main_menu(show_trial=not user.trial_used, show_channel=not user.channel_bonus))
 
 
 @router.message(Command("menu"))
@@ -48,7 +48,7 @@ async def menu_cmd(message: Message, state: FSMContext):
     await state.clear()
     user = await load_user(message.from_user)
     await ui.send_welcome(message, texts.welcome(message.from_user.first_name),
-                          kb.main_menu(show_trial=not user.trial_used))
+                          kb.main_menu(show_trial=not user.trial_used, show_channel=not user.channel_bonus))
 
 
 @router.message(Command("app"))
@@ -63,7 +63,7 @@ async def menu(cb: CallbackQuery, state: FSMContext):
     await state.clear()
     user = await load_user(cb.from_user)
     await ui.show_welcome(cb, texts.welcome(cb.from_user.first_name),
-                          kb.main_menu(show_trial=not user.trial_used))
+                          kb.main_menu(show_trial=not user.trial_used, show_channel=not user.channel_bonus))
     await cb.answer()
 
 

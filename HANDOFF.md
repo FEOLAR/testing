@@ -12,7 +12,7 @@ VPN-сервис **WhiteHoleVPN** (раньше GalacticVPN), продажа ч�
 - `bot/app/` — бот (aiogram 3, aiohttp, SQLAlchemy async + PostgreSQL, Redis, docker compose).
 - `infra/add-node.sh` — установка новой ноды (Docker, remnanode NODE_PORT 2222, sub-proxy Caddy :9443, ufw); `bash add-node.sh test` — тест TLS.
 - `infra/bridge-nodes.sh` — мост в РФ: проверка нод, HAProxy (balance source) 443/8443, Caddy для подписки.
-- Последний архив: **whitehole-bot-v38.zip** (установлен 21.10).
+- Последний архив: **whitehole-bot-v39.zip** (v38 установлена 21.10).
 
 ### Деплой бота (на сервере панели)
 ```
@@ -167,3 +167,11 @@ docker logs --tail 30 vpn-bot
 - `app/exitwatch.py`: раз в минуту TCP-проверка YouTube-выхода (`YT_EXITS`, по умолчанию `217.149.26.98:8388`), 3 неудачи подряд → 🔴 админам с инструкцией, восстановление → 🟢; блок «📺 YouTube-сервер» в `/nodes`.
 - На YouTube-выходе разрешён доступ панели: `ufw allow from 146.0.76.110 to any port 8388 proto tcp`.
 - v38 включает изменения v37 (тексты «Инструкции» и «Что умеет бот»).
+
+### v39 (21.10.2026)
+- `app/handlers/engage.py`:
+  - **Бонус за канал**: `CHANNEL_USERNAME` (@имя или t.me/…), `CHANNEL_BONUS_DAYS=3`. Кнопка «🎁 +3 дня за подписку на канал» в главном меню, пока бонус не получен (`users.channel_bonus`). Проверка — `getChatMember` (бот должен быть **админом канала**). Выдача атомарно, откат при ошибке панели.
+  - **Отзывы**: кнопка «⭐ Оставить отзыв» под «Моя подписка» → FSM `ReviewInput` → любое сообщение (текст/фото/видео/голос) пересылается `REVIEW_TO` (ID через запятую; пусто — ADMIN_IDS) с подписью (имя, @, ID, подписка). `users.review_at`.
+  - **Напоминания**: раз в час job `review_reminders`: была подписка (expire_at за последние 30 дней), регистрация старше `REVIEW_FIRST_DAYS=3`, нет отзыва, не напоминали `REVIEW_REMIND_DAYS=7` дней → экран с картинкой и кнопкой; после отзыва — больше не шлёт. `users.review_reminded_at`.
+- Баннеры `web/screens/channel.jpg` и `review.jpg` — пока нет, вместо них показывается welcome.jpg (`ui.FALLBACK_SCREEN`).
+- Тест: scratchpad t_engage.py (29 проверок) на локальном Postgres.

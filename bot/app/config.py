@@ -48,6 +48,18 @@ class Settings(BaseSettings):
     # Сервер(ы)-выход для YouTube (host:port через запятую): бот раз в минуту проверяет, что отвечает,
     # и шлёт админам 🔴/🟢 (см. exitwatch.py). Пусто — проверка выключена.
     yt_exits: str = "217.149.26.98:8388"
+
+    # Бонус за подписку на Telegram-канал: @имя или ссылка t.me/... Пусто — кнопки нет.
+    # Бот должен быть администратором канала, иначе Telegram не даст проверить подписку.
+    channel_username: str = ""
+    channel_bonus_days: int = 3
+    # Отзывы: кому пересылать (Telegram ID через запятую; пусто — всем ADMIN_IDS).
+    # Получатель должен хотя бы раз нажать /start в боте, иначе бот не сможет ему написать.
+    review_to: str = ""
+    # Напоминание оставить отзыв: раз в REVIEW_REMIND_DAYS дней, первое — через REVIEW_FIRST_DAYS
+    # после регистрации; только тем, у кого была подписка. 0 — напоминания выключены.
+    review_remind_days: int = 7
+    review_first_days: int = 3
     # Фирменные иконки на кнопках меню (нужен Telegram Premium у владельца бота). false — обычные эмодзи.
     button_icons: bool = True
     # Фирменный пак эмодзи для кнопок и текстов (имя или ссылка t.me/addemoji/...). Пусто — свой пак бота.
@@ -104,6 +116,24 @@ class Settings(BaseSettings):
         if code == TEST_PLAN.code:  # скрытый тариф для проверки оплаты админом: 1 ⭐ = 1 день
             return TEST_PLAN
         return next((p for p in self.plan_list if p.code == code), None)
+
+    @cached_property
+    def channel_name(self) -> str:
+        """Имя канала без @ и ссылки: «whiteholevpn»."""
+        v = self.channel_username.strip()
+        for prefix in ("https://", "http://", "t.me/", "telegram.me/", "@"):
+            if v.lower().startswith(prefix):
+                v = v[len(prefix):]
+        return v.strip("/").split("/")[0]
+
+    @property
+    def channel_url(self) -> str:
+        return f"https://t.me/{self.channel_name}" if self.channel_name else ""
+
+    @cached_property
+    def review_recipients(self) -> list[int]:
+        ids = [int(x) for x in self.review_to.replace(" ", "").split(",") if x.lstrip("-").isdigit()]
+        return ids or sorted(self.admins)
 
     @cached_property
     def yt_exit_list(self) -> list[str]:
