@@ -9,6 +9,7 @@ from sqlalchemy import select, update
 
 from . import keyboards as kb, texts
 from .balancer import balance_hosts
+from .exitwatch import check_exits
 from .config import settings
 from .cryptopay import crypto
 from .db import Payment, Session, User
@@ -136,4 +137,6 @@ def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
     sched.add_job(reconcile_stars_job, "interval", minutes=10, **opts)
     if settings.auto_host_tag:
         sched.add_job(balance_hosts, "interval", minutes=1, **opts)
+    if settings.yt_exit_list:
+        sched.add_job(check_exits, "interval", minutes=1, **opts)
     return sched

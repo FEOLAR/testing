@@ -173,4 +173,6 @@ async def status_text() -> str:
         linked = ", ".join(escape(by_uuid.get(u, "?")) for u in h.get("nodes") or []) or "ноды не привязаны!"
         lines.append(f"• {escape(h['remark'])}{' (выкл)' if h.get('isDisabled') else ''}: "
                      f"<code>{escape(h['address'])}:{h['port']}</code>\n   ноды: {linked}")
+    from .exitwatch import status_lines
+    lines += status_lines()
     return "\n".join(lines)

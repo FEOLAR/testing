@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     balance_by_load: bool = True
     # Вес нод для балансировщика: "FR-1:2,GE-1:1" — FR-1 мощнее вдвое. Имя как в панели; не указана — вес 1.
     node_weights: str = ""
+    # Сервер(ы)-выход для YouTube (host:port через запятую): бот раз в минуту проверяет, что отвечает,
+    # и шлёт админам 🔴/🟢 (см. exitwatch.py). Пусто — проверка выключена.
+    yt_exits: str = "217.149.26.98:8388"
     # Фирменные иконки на кнопках меню (нужен Telegram Premium у владельца бота). false — обычные эмодзи.
     button_icons: bool = True
     # Фирменный пак эмодзи для кнопок и текстов (имя или ссылка t.me/addemoji/...). Пусто — свой пак бота.
@@ -101,6 +104,10 @@ class Settings(BaseSettings):
         if code == TEST_PLAN.code:  # скрытый тариф для проверки оплаты админом: 1 ⭐ = 1 день
             return TEST_PLAN
         return next((p for p in self.plan_list if p.code == code), None)
+
+    @cached_property
+    def yt_exit_list(self) -> list[str]:
+        return [x.strip() for x in self.yt_exits.split(",") if x.strip() and ":" in x]
 
     @cached_property
     def weights(self) -> dict[str, float]:
