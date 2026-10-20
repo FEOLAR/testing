@@ -152,3 +152,10 @@ docker logs --tail 30 vpn-bot
 - Config Profile нод: outbound `YT_RU` (shadowsocks → 217.149.26.98:8388) + первое правило: geosite:youtube, doubleclick.net, googleadservices.com, googlesyndication.com, googletagservices.com, imasdk.googleapis.com → YT_RU. Остальное — исходный конфиг (без блока рекламы/QUIC, без balancer/observatory).
 - Только API-домены (www.youtube.com, youtubei) через выход — НЕ хватило для iPhone; нужен весь geosite:youtube.
 - Минус: если 217.149.26.98 упадёт — YouTube у всех перестанет работать (нет fallback). TODO: сервер мощнее/второй выход, fallback через balancer (проверять на мобильном интернете, не на домашнем Wi-Fi пользователя — там провайдер режет прямой TCP 443 к нодам).
+
+### Новые ноды (18–21.10.2026)
+- Финляндия 194.164.235.8 и 212.237.218.250 — заблокированы ТСПУ после запуска VPN (сначала тест проходил). Хосты/ноду FI выключить/удалить.
+- Добавлены: **151.243.198.253** (та же сеть, что FR-1) и **109.66.233.129** — проверены с моста (200) и с мобильного (Safari https://IP → предупреждение о сертификате), ноды установлены, хосты созданы, в AUTO, в мосту 77.91.95.53, разрешены на YouTube-выходе (ufw 8388).
+- Мост: `bash /root/bridge-nodes.sh 151.243.225.123 194.247.187.139 151.243.198.253 109.66.233.129`.
+- Порядок проверки новой ноды ДО установки: тестовый openssl s_server на 443 (3 мин) → с моста curl --resolve originfi.dattebayo.space:443:IP → с мобильного Safari https://IP.
+- Каждую новую ноду разрешать на YouTube-выходе 217.149.26.98 (ufw allow from IP to any port 8388 tcp/udp), иначе на ней будет реклама.
