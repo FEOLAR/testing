@@ -15,6 +15,7 @@ from ..emoji import e
 from ..db import Session, User
 from ..remnawave import panel
 from ..services import activate_trial, get_or_create_user, refresh_from_panel
+from .engage import gated, send_gate
 
 router = Router()
 log = logging.getLogger(__name__)
@@ -37,6 +38,8 @@ async def start(message: Message, command: CommandObject, state: FSMContext):
         ref = int(command.args[4:])
     user, _ = await get_or_create_user(message.from_user.id, message.from_user.username,
                                        message.from_user.first_name, referrer_id=ref)
+    if gated(user):  # КПП: сначала подписка на канал, меню — после проверки
+        return await send_gate(message, message.from_user.first_name)
     await message.answer(texts.menu_hint(), reply_markup=kb.reply_menu())  # постоянная кнопка «Меню» внизу
     await ui.send_welcome(message, texts.welcome(message.from_user.first_name),
                           kb.main_menu(show_trial=not user.trial_used, show_channel=not user.channel_bonus))
@@ -47,6 +50,8 @@ async def start(message: Message, command: CommandObject, state: FSMContext):
 async def menu_cmd(message: Message, state: FSMContext):
     await state.clear()
     user = await load_user(message.from_user)
+    if gated(user):
+        return await send_gate(message, message.from_user.first_name)
     await ui.send_welcome(message, texts.welcome(message.from_user.first_name),
                           kb.main_menu(show_trial=not user.trial_used, show_channel=not user.channel_bonus))
 
@@ -62,6 +67,9 @@ async def app_cmd(message: Message, state: FSMContext):
 async def menu(cb: CallbackQuery, state: FSMContext):
     await state.clear()
     user = await load_user(cb.from_user)
+    if gated(user):
+        await ui.show(cb, texts.channel_gate(cb.from_user.first_name), reply_markup=kb.channel(gate=True), photo="channel")
+        return await cb.answer()
     await ui.show_welcome(cb, texts.welcome(cb.from_user.first_name),
                           kb.main_menu(show_trial=not user.trial_used, show_channel=not user.channel_bonus))
     await cb.answer()

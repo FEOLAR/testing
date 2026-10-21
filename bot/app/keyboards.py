@@ -140,12 +140,15 @@ def renew() -> M:
     return M(inline_keyboard=[[btn("card", "Продлить", "success", callback_data="buy")]])
 
 
-def channel() -> M:
-    return M(inline_keyboard=[
+def channel(gate: bool = False) -> M:
+    """Экран канала. gate=True — КПП при первом /start: без «Назад», проверка ведёт сразу в меню."""
+    rows = [
         [btn("link", "Подписаться на канал", "primary", url=settings.channel_url)],
-        [btn("ok", "Я подписался — проверить", "success", callback_data="channel_check")],
-        [_back()],
-    ])
+        [btn("ok", "Я подписался — проверить", "success", callback_data="gate_check" if gate else "channel_check")],
+    ]
+    if not gate:
+        rows.append([_back()])
+    return M(inline_keyboard=rows)
 
 
 def review_reminder() -> M:

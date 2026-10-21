@@ -311,6 +311,29 @@ def channel_offer() -> str:
     )
 
 
+def channel_gate(name: str | None) -> str:
+    d = settings.channel_bonus_days
+    return (
+        f"{e('logo')} <b><i>Добро пожаловать в {escape(settings.brand_name)}, {escape(name or 'друг')}!</i></b> {e('logo')}\n\n"
+        "Чтобы начать, подпишись на наш Telegram-канал"
+        + (f" — и получи <b><i>{_days(d)}</i></b> подписки в подарок." if d > 0 else ".") + "\n\n"
+        "<blockquote>"
+        f"{e('zap')} Новости сервиса и новые серверы\n"
+        f"{e('ticket')} Промокоды и скидки — только для подписчиков\n"
+        f"{e('info')} Если что-то сломается — первыми узнаете от нас"
+        "</blockquote>\n\n"
+        "<b>Как начать:</b>\n"
+        "1. Нажми «Подписаться на канал»\n"
+        "2. Вернись сюда и нажми «Я подписался»"
+    )
+
+
+def channel_passed() -> str:  # всплывающее окно после КПП
+    d = settings.channel_bonus_days
+    return (f"Подписка подтверждена! Тебе начислено +{_days(d)} — подробности в «Моя подписка»."
+            if d > 0 else "Подписка подтверждена — добро пожаловать!")
+
+
 def channel_not_member() -> str:  # всплывающее окно, до 200 символов
     return "Пока не вижу тебя в канале. Подпишись и нажми «Я подписался» ещё раз."
 

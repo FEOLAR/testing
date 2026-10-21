@@ -37,13 +37,30 @@ def _active(user: User) -> bool:
     return bool(user.expire_at and user.expire_at > datetime.now(timezone.utc))
 
 
-# ---------- бонус за подписку на канал ----------
+# ---------- бонус за подписку на канал / КПП ----------
+
+def gated(user: User) -> bool:
+    """Новый человек должен сначала пройти КПП: подписаться на канал. Тех, у кого уже была подписка, не трогаем."""
+    return bool(settings.channel_name and settings.channel_gate and not user.channel_bonus
+                and user.expire_at is None and not user.trial_used)
+
+
+async def send_gate(message: Message, name: str | None) -> None:
+    await ui.send_screen(message, texts.channel_gate(name), kb.channel(gate=True), "channel")
 
 async def is_subscribed(bot: Bot, user_id: int) -> bool:
     member = await bot.get_chat_member(f"@{settings.channel_name}", user_id)
     if member.status in MEMBER:
         return True
     return member.status == ChatMemberStatus.RESTRICTED and bool(getattr(member, "is_member", False))
+
+
+async def mark_passed(tg_id: int) -> bool:
+    async with Session() as s:
+        res = await s.execute(update(User).where(User.tg_id == tg_id, User.channel_bonus.is_(False))
+                              .values(channel_bonus=True).returning(User.tg_id))
+        await s.commit()
+        return res.scalar_one_or_none() is not None
 
 
 async def claim_channel_bonus(tg_id: int) -> User | None:
@@ -94,6 +111,34 @@ async def channel_check(cb: CallbackQuery):
     if user is None:
         return await cb.message.answer("Бонус за подписку уже получен.")
     await ui.show(cb, texts.channel_ok(user), reply_markup=kb.profile(True), photo="channel")
+
+
+@router.callback_query(F.data == "gate_check")
+async def gate_check(cb: CallbackQuery):
+    """КПП: проверили подписку → начислили бонус → показали главное меню."""
+    if not settings.channel_name:
+        return await cb.answer()
+    try:
+        ok = await is_subscribed(cb.bot, cb.from_user.id)
+    except Exception:
+        log.exception("gate check failed — бот администратор канала @%s?", settings.channel_name)
+        return await cb.answer("Не получилось проверить подписку. Попробуй через минуту.", show_alert=True)
+    if not ok:
+        return await cb.answer(texts.channel_not_member(), show_alert=True)
+    if settings.channel_bonus_days > 0:
+        try:
+            await claim_channel_bonus(cb.from_user.id)  # None — бонус уже был, просто пускаем в меню
+        except Exception:
+            log.exception("gate bonus grant failed")
+            return await cb.answer("Подписка есть, но не получилось начислить бонус. Нажми «Я подписался» ещё раз "
+                                   "через минуту.", show_alert=True)
+    else:
+        await mark_passed(cb.from_user.id)
+    user, _ = await get_or_create_user(cb.from_user.id, cb.from_user.username, cb.from_user.first_name)
+    await cb.answer(texts.channel_passed(), show_alert=True)
+    await cb.message.answer(texts.menu_hint(), reply_markup=kb.reply_menu())
+    await ui.show_welcome(cb, texts.welcome(cb.from_user.first_name),
+                          kb.main_menu(show_trial=not user.trial_used, show_channel=False))
 
 
 # ---------- отзывы ----------
