@@ -12,7 +12,7 @@ VPN-сервис **WhiteHoleVPN** (раньше GalacticVPN), продажа ч�
 - `bot/app/` — бот (aiogram 3, aiohttp, SQLAlchemy async + PostgreSQL, Redis, docker compose).
 - `infra/add-node.sh` — установка новой ноды (Docker, remnanode NODE_PORT 2222, sub-proxy Caddy :9443, ufw); `bash add-node.sh test` — тест TLS.
 - `infra/bridge-nodes.sh` — мост в РФ: проверка нод, HAProxy (balance source) 443/8443, Caddy для подписки.
-- Последний архив: **whitehole-bot-v39.zip** (v38 установлена 21.10).
+- Последний архив: **whitehole-bot-v40.zip** (v38 установлена 21.10; v39/v40 — к установке).
 
 ### Деплой бота (на сервере панели)
 ```
@@ -176,3 +176,9 @@ docker logs --tail 30 vpn-bot
   - **Напоминания**: раз в час job `review_reminders`: была подписка (expire_at за последние 30 дней), регистрация старше `REVIEW_FIRST_DAYS=3`, нет отзыва, не напоминали `REVIEW_REMIND_DAYS=7` дней → экран с картинкой и кнопкой; после отзыва — больше не шлёт. `users.review_reminded_at`.
 - Баннеры `web/screens/channel.jpg` и `review.jpg` — пока нет, вместо них показывается welcome.jpg (`ui.FALLBACK_SCREEN`).
 - Тест: scratchpad t_engage.py (41 проверка) на локальном Postgres.
+
+### v40 + профиль маршрутизации v3 (22.10.2026)
+- Бот раздаёт компактные geo-базы: `GET /miniapp/geoip.dat` (только РФ, ≈0,4 МБ, 25 тыс. сетей из Loyalsoldier/geoip text/ru.txt; сборка `infra/mkgeo.py ru.txt geoip.dat`) и `/miniapp/geosite.dat` (заглушка PRIVATE, `infra/mksite.py`). Файлы в `app/web/geo/`.
+- Профиль Happ v3: `infra/happ-routing.txt` (ссылка для заголовка `routing` в панели) и `.json`. Отличия от routing2: `DirectIp: geoip:ru` (все сайты на российских IP — вузы, колледжи, госсервисы — напрямую), `DomainStrategy: IPIfNonMatch`, `RouteOrder: block-proxy-direct`, ProxySites — YouTube/Google/Telegram всегда через VPN (кэши Google у российских провайдеров не уходят напрямую), +~150 российских сервисов на не-.ru доменах (ВТБ, Альфа, Т-Банк, Яндекс, ВК, Ozon, WB-CDN, ЕМИАС, Касперский, Dr.Web…). Сайты проверки IP намеренно НЕ напрямую.
+- Geo-URL: https://77-91-95-53.sslip.io:9443/miniapp/geoip.dat — через мост; проверено Xray 25.10: 77.88.8.8 и 213.24.64.175 → direct, 1.1.1.1/8.8.8.8/151.243.x и 87.245.x (GGC Google) → proxy.
+- Ограничение: приложения, которые проверяют сам факт включённого VPN в системе (а не IP), маршрутизацией не лечатся; на Android — исключить приложение в Happ (раздельное туннелирование), на iPhone — только выключать VPN.

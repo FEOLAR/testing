@@ -465,6 +465,14 @@ async def logo(request: web.Request) -> web.FileResponse:
     return web.FileResponse(WEB_DIR / "logo.webp", headers={"Cache-Control": "public, max-age=86400", "Content-Type": "image/webp"})
 
 
+async def geo_file(request: web.Request) -> web.FileResponse:
+    """Компактные geo-базы для профиля маршрутизации Happ: geoip.dat — только IP России (≈0,4 МБ вместо 16 МБ,
+    чтобы iPhone не упирался в лимит памяти), geosite.dat — заглушка. Пересборка: infra/mkgeo.py."""
+    name = request.match_info["name"]
+    return web.FileResponse(WEB_DIR / "geo" / f"{name}.dat",
+                            headers={"Cache-Control": "public, max-age=3600", "Content-Type": "application/octet-stream"})
+
+
 async def tg_js(request: web.Request) -> web.FileResponse:
     # Копия telegram-web-app.js: telegram.org из РФ может открываться нестабильно
     return web.FileResponse(WEB_DIR / "tg.js", headers={"Cache-Control": "public, max-age=86400"})
@@ -504,6 +512,7 @@ def build_app(bot: Bot, bot_username: str) -> web.Application:
     r.add_get(f"{PREFIX}/info", info)
     r.add_get(f"{PREFIX}/{{doc:privacy|terms}}", legal)
     r.add_get(f"{PREFIX}/logo.webp", logo)
+    r.add_get(f"{PREFIX}/{{name:geoip|geosite}}.dat", geo_file)
     r.add_get(f"{PREFIX}/go", go)
     r.add_get(f"{PREFIX}/api/me", me)
     r.add_post(f"{PREFIX}/api/trial", trial)
