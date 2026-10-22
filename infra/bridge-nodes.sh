@@ -4,7 +4,12 @@
 # VPN (443/8443): HAProxy раскидывает клиентов по нодам (один клиент — всегда одна нода)
 #                 и сам убирает упавшую ноду.
 # Подписка (9443): Caddy ходит на sub-proxy первой живой ноды, при сбое — на следующую.
+# Проверка нод — настоящим TLS-рукопожатием (как у клиента), поэтому нода с заблокированным в РФ IP
+# тоже считается упавшей. Статистика проверок (порт 8404, только для сервера с ботом) — бот по ней
+# понимает, какие ноды не работают из России, и убирает их из подписки.
 set -e
+PANEL_IP=146.0.76.110
+SNI=originfi.dattebayo.space
 [ $# -ge 1 ] || { echo "Укажите IP нод: bash bridge-nodes.sh IP1 IP2 ..."; exit 1; }
 MYIP=$(curl -4 -s -m 10 https://api.ipify.org || hostname -I | awk '{print $1}')
 BRIDGE_DOMAIN=$(echo "$MYIP" | tr . -).sslip.io
@@ -25,19 +30,20 @@ if ! command -v haproxy >/dev/null || ! command -v caddy >/dev/null; then
 fi
 if command -v ufw >/dev/null && ufw status | grep -q "Status: active"; then
     ufw allow 443/tcp >/dev/null; ufw allow 8443/tcp >/dev/null; ufw allow 9443/tcp >/dev/null; ufw allow 80/tcp >/dev/null
+    ufw allow from $PANEL_IP to any port 8404 proto tcp >/dev/null
 fi
 mkdir -p /etc/caddy
 [ -f /etc/caddy/Caddyfile ] && cp /etc/caddy/Caddyfile /etc/caddy/Caddyfile.bak.$(date +%s)
 [ -f /etc/haproxy/haproxy.cfg ] && cp /etc/haproxy/haproxy.cfg /etc/haproxy/haproxy.cfg.bak.$(date +%s)
 
-S443=""; S8443=""; UP=""; n=1
+S443=""; S8443=""; UP=""
+CHK="check check-ssl verify none check-sni $SNI inter 10s fall 3 rise 2"
 for ip in "$@"; do
-    S443="$S443    server n$n $ip:443 check inter 10s fall 3 rise 2
+    S443="$S443    server $ip $ip:443 $CHK
 "
-    S8443="$S8443    server n$n $ip:8443 check inter 10s fall 3 rise 2
+    S8443="$S8443    server $ip $ip:8443 $CHK
 "
     UP="$UP https://$(echo $ip | tr . -).sslip.io:9443"
-    n=$((n+1))
 done
 
 cat >/etc/haproxy/haproxy.cfg <<EOF
@@ -48,6 +54,14 @@ defaults
     timeout connect 5s
     timeout client  1h
     timeout server  1h
+frontend stats
+    mode http
+    bind :8404
+    timeout client 30s
+    acl panel src $PANEL_IP 127.0.0.1
+    http-request deny if !panel
+    stats enable
+    stats uri /stats
 frontend vpn443
     bind :443
     default_backend nodes443
@@ -63,7 +77,7 @@ backend nodes8443
     hash-type consistent
 $S8443
 EOF
-haproxy -c -f /etc/haproxy/haproxy.cfg >/dev/null
+haproxy -c -f /etc/haproxy/haproxy.cfg >/dev/null 2>&1 || { haproxy -c -f /etc/haproxy/haproxy.cfg; echo "!! Ошибка в конфиге HAProxy, ничего не меняю"; exit 1; }
 
 cat >/etc/caddy/Caddyfile <<EOF
 {
@@ -97,6 +111,9 @@ sleep 5
 echo
 echo "================ ИТОГ ================"
 systemctl is-active --quiet haproxy && echo "✅ HAProxy работает" || echo "⚠️  HAProxy не запустился: journalctl -u haproxy -n 20"
+sleep 30
+echo "Ноды по проверке HAProxy (UP — работает, DOWN — не отвечает из РФ):"
+curl -s -m 5 "http://127.0.0.1:8404/stats;csv" | awk -F, '$1=="nodes443" && $2!="BACKEND" {print "   " $2 ": " $18}'
 CODE=$(curl -sk -m 15 -o /dev/null -w "%{http_code}" https://$BRIDGE_DOMAIN:9443/miniapp/)
 [ "$CODE" = "200" ] && echo "✅ Подписка через мост: 200" || echo "⚠️  Подписка через мост: $CODE"
 echo "Откат: cp /etc/caddy/Caddyfile.bak.* и /etc/haproxy/haproxy.cfg.bak.* обратно, systemctl stop haproxy,"

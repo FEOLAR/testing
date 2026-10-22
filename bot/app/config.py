@@ -48,6 +48,13 @@ class Settings(BaseSettings):
     # Сервер(ы)-выход для YouTube (host:port через запятую): бот раз в минуту проверяет, что отвечает,
     # и шлёт админам 🔴/🟢 (см. exitwatch.py). Пусто — проверка выключена.
     yt_exits: str = "217.149.26.98:8388"
+    # Мосты в России: бот читает с них проверку нод (HAProxy, порт 8404) и убирает из подписки ноды,
+    # которые не работают из России (см. bridgewatch.py). Пусто — проверка выключена.
+    bridges: str = "77.91.95.53,193.247.73.20"
+    bridge_stats_port: int = 8404
+    # Прятать из подписки хосты стран (без тега AUTO), если их нода лежит или не работает из России.
+    # Вернутся сами, когда нода оживёт. false — страны всегда видны.
+    hide_dead_hosts: bool = True
 
     # Бонус за подписку на Telegram-канал: @имя или ссылка t.me/... Пусто — кнопки нет.
     # Бот должен быть администратором канала, иначе Telegram не даст проверить подписку.
@@ -98,6 +105,10 @@ class Settings(BaseSettings):
 
     database_url: str
     redis_url: str = ""
+
+    @property
+    def bridge_list(self) -> list[str]:
+        return [x.strip() for x in self.bridges.split(",") if x.strip()]
 
     @cached_property
     def admins(self) -> set[int]:

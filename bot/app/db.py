@@ -105,6 +105,8 @@ MIGRATIONS = [
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS channel_bonus BOOLEAN NOT NULL DEFAULT FALSE",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS review_at TIMESTAMPTZ",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS review_reminded_at TIMESTAMPTZ",
+    # хосты, которые бот спрятал из подписки из-за упавшей ноды (чтобы вернуть только их)
+    "CREATE TABLE IF NOT EXISTS hidden_hosts (uuid VARCHAR(64) PRIMARY KEY, hidden_at TIMESTAMPTZ NOT NULL DEFAULT now())",
 ]
 
 
