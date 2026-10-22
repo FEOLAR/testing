@@ -64,10 +64,13 @@ async def mark_passed(tg_id: int) -> bool:
 
 
 async def claim_channel_bonus(tg_id: int) -> User | None:
-    """Выдаёт бонус один раз. None — если уже получен."""
+    """Выдаёт бонус один раз. Бонус за канал и пробный период — одни и те же бесплатные дни: кто брал пробный
+    период, бонус не получает, а получивший бонус больше не видит «Попробовать бесплатно».
+    None — если бесплатные дни уже были."""
     async with Session() as s:
-        res = await s.execute(update(User).where(User.tg_id == tg_id, User.channel_bonus.is_(False))
-                              .values(channel_bonus=True).returning(User.tg_id))
+        res = await s.execute(update(User).where(User.tg_id == tg_id, User.channel_bonus.is_(False),
+                                                 User.trial_used.is_(False))
+                              .values(channel_bonus=True, trial_used=True).returning(User.tg_id))
         await s.commit()
         if res.scalar_one_or_none() is None:
             return None
@@ -75,7 +78,7 @@ async def claim_channel_bonus(tg_id: int) -> User | None:
         return await grant_days(tg_id, settings.channel_bonus_days)
     except Exception:
         async with Session() as s:  # не получилось начислить — пусть попробует ещё раз
-            await s.execute(update(User).where(User.tg_id == tg_id).values(channel_bonus=False))
+            await s.execute(update(User).where(User.tg_id == tg_id).values(channel_bonus=False, trial_used=False))
             await s.commit()
         raise
 
@@ -85,8 +88,8 @@ async def channel(cb: CallbackQuery):
     if not settings.channel_name:
         return await cb.answer()
     user, _ = await get_or_create_user(cb.from_user.id, cb.from_user.username, cb.from_user.first_name)
-    if user.channel_bonus:
-        return await cb.answer("Бонус за подписку уже получен — спасибо, что ты с нами!", show_alert=True)
+    if user.channel_bonus or user.trial_used:
+        return await cb.answer("Бесплатные дни уже получены — спасибо, что ты с нами!", show_alert=True)
     await ui.show(cb, texts.channel_offer(), reply_markup=kb.channel(), photo="channel")
     await cb.answer()
 
@@ -109,7 +112,7 @@ async def channel_check(cb: CallbackQuery):
         log.exception("channel bonus grant failed")
         return await cb.message.answer(f"{e('no')} Не получилось начислить бонус. Попробуй через минуту.")
     if user is None:
-        return await cb.message.answer("Бонус за подписку уже получен.")
+        return await cb.message.answer("Бесплатные дни уже получены — бонус за канал не суммируется с пробным периодом.")
     await ui.show(cb, texts.channel_ok(user), reply_markup=kb.profile(True), photo="channel")
 
 

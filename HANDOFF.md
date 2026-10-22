@@ -12,7 +12,7 @@ VPN-сервис **WhiteHoleVPN** (раньше GalacticVPN), продажа ч�
 - `bot/app/` — бот (aiogram 3, aiohttp, SQLAlchemy async + PostgreSQL, Redis, docker compose).
 - `infra/add-node.sh` — установка новой ноды (Docker, remnanode NODE_PORT 2222, sub-proxy Caddy :9443, ufw); `bash add-node.sh test` — тест TLS.
 - `infra/bridge-nodes.sh` — мост в РФ: проверка нод, HAProxy (balance source) 443/8443, Caddy для подписки.
-- Последний архив: **whitehole-bot-v40.zip** (v38 установлена 21.10; v39/v40 — к установке).
+- Последний архив: **whitehole-bot-v41.zip**.
 
 ### Деплой бота (на сервере панели)
 ```
@@ -182,3 +182,8 @@ docker logs --tail 30 vpn-bot
 - Профиль Happ v3: `infra/happ-routing.txt` (ссылка для заголовка `routing` в панели) и `.json`. Отличия от routing2: `DirectIp: geoip:ru` (все сайты на российских IP — вузы, колледжи, госсервисы — напрямую), `DomainStrategy: IPIfNonMatch`, `RouteOrder: block-proxy-direct`, ProxySites — YouTube/Google/Telegram всегда через VPN (кэши Google у российских провайдеров не уходят напрямую), +~150 российских сервисов на не-.ru доменах (ВТБ, Альфа, Т-Банк, Яндекс, ВК, Ozon, WB-CDN, ЕМИАС, Касперский, Dr.Web…). Сайты проверки IP намеренно НЕ напрямую.
 - Geo-URL: https://77-91-95-53.sslip.io:9443/miniapp/geoip.dat — через мост; проверено Xray 25.10: 77.88.8.8 и 213.24.64.175 → direct, 1.1.1.1/8.8.8.8/151.243.x и 87.245.x (GGC Google) → proxy.
 - Ограничение: приложения, которые проверяют сам факт включённого VPN в системе (а не IP), маршрутизацией не лечатся; на Android — исключить приложение в Happ (раздельное туннелирование), на iPhone — только выключать VPN.
+
+### v41 (22.10.2026)
+- Бонус за канал и пробный период — одни и те же бесплатные дни (всего 3): `claim_channel_bonus` ставит и `channel_bonus`, и `trial_used`; взявший пробник бонус за канал не получает (кнопка канала скрыта, при нажатии — «бесплатные дни уже получены»).
+- Отдельных баннеров для канала/отзывов не будет — используется welcome.jpg (решение пользователя).
+- `REVIEW_TO` в .env — получатели отзывов; менять: `sed -i 's/^REVIEW_TO=.*/REVIEW_TO=ID1,ID2/' .env && docker compose up -d`.
