@@ -12,7 +12,7 @@ VPN-сервис **WhiteHoleVPN** (раньше GalacticVPN), продажа ч�
 - `bot/app/` — бот (aiogram 3, aiohttp, SQLAlchemy async + PostgreSQL, Redis, docker compose).
 - `infra/add-node.sh` — установка новой ноды (Docker, remnanode NODE_PORT 2222, sub-proxy Caddy :9443, ufw); `bash add-node.sh test` — тест TLS.
 - `infra/bridge-nodes.sh` — мост в РФ: проверка нод, HAProxy (balance source) 443/8443, Caddy для подписки.
-- Последний архив: **whitehole-bot-v42.zip** (22.10, проверка нод из России через мосты + скрытие стран упавших нод). Предыдущий v41. Профиль Happ v3 (infra/happ-routing.txt) вставлен в панель 22.10.
+- Последний архив: **whitehole-bot-v43.zip** (25.10, /wlcheck). До него v42 (22.10, проверка нод из России через мосты + скрытие стран упавших нод). Предыдущий v41. Профиль Happ v3 (infra/happ-routing.txt) вставлен в панель 22.10.
 
 ### Деплой бота (на сервере панели)
 ```
@@ -202,3 +202,6 @@ docker logs --tail 30 vpn-bot
 - Мост: `infra/wl-bridge.sh IP_нод...` — HAProxy :443 → ноды:4443, TLS-проверка с SNI yastatic.net, stats :8404 для бота (добавить IP в BRIDGES).
 - Панель: вход WL_REALITY включить во внутреннем скваде; хост «🛡 Белый мост — 📱» (адрес IP моста, порт 443, вход WL_REALITY, SNI yastatic.net, fingerprint chrome), без нод и без AUTO.
 - Если звено мост→нода начнут резать — план Б: каскад (белый мост = отдельная нода Remnawave со своим профилем, выход VLESS Reality на ноду по 443).
+- **v43 (25.10): подбор «белого» IP без мучений клиента.**
+  - `infra/wl-check.sh [IP…]` — сверка IP с публичным списком подсетей (github hxehex/russia-mobile-internet-whitelist, cidrwhitelist.txt, ~30 тыс. подсетей, обновлялся в июле 2026). ❌ — сразу брать другой IP.
+  - `/wlcheck IP1 IP2 …` в боте → ссылка `MINIAPP_URL/wlcheck/?ips=…` для клиента: открывает на Wi‑Fi, переключается на мобильный, страница сама проверяет все IP (быстрый ответ = оператор пропускает, таймаут 7 с = режет; контроль: Яндекс должен пройти, обычный мост — нет), результат на Wi‑Fi уходит админам. На проверяемых серверах порт 443 не должен быть закрыт firewall'ом (DROP = ложный ❌).

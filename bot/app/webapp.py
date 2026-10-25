@@ -498,6 +498,46 @@ async def go(request: web.Request) -> web.Response:
     return web.Response(text=GO_PAGE % json.dumps(u).replace("</", "<\\/"), content_type="text/html")
 
 
+# ---------- проверка «белых списков» у клиента ----------
+# Админ шлёт клиенту ссылку /miniapp/wlcheck/?ips=IP1,IP2 (команда /wlcheck). Клиент открывает её на Wi‑Fi,
+# переключается на мобильный интернет, жмёт «Проверить» — страница сама проверяет все адреса,
+# потом на Wi‑Fi отправляет результат, и бот присылает его админам.
+_wl_last: dict[str, float] = {}
+
+
+async def wlcheck_page(request: web.Request) -> web.FileResponse:
+    return web.FileResponse(WEB_DIR / "wlcheck.html", headers={"Cache-Control": "no-cache"})
+
+
+async def wlcheck_report(request: web.Request) -> web.Response:
+    from html import escape
+    from .services import notify_admins
+    peer = request.headers.get("X-Forwarded-For", request.remote or "").split(",")[0].strip()
+    now = time.time()
+    if now - _wl_last.get(peer, 0) < 15:
+        return err("Слишком часто", 429)
+    _wl_last[peer] = now
+    try:
+        data = await request.json()
+        rows = data.get("results") or []
+        op = str(data.get("op") or "не указан")[:30]
+    except Exception:
+        return err("bad json")
+    ok, bad, ctrl = [], [], []
+    for r in rows[:160]:
+        ip, label = str(r.get("ip", ""))[:15], str(r.get("label", ""))[:40]
+        mark = "✅" if r.get("ok") else "❌"
+        if label.startswith("контроль"):
+            ctrl.append(f"{mark} {escape(label)}")
+        else:
+            (ok if r.get("ok") else bad).append(f"<code>{escape(ip)}</code>")
+    text = (f"🧪 <b>Проверка белых списков</b> (оператор: {escape(op)})\n" + "\n".join(ctrl) +
+            (f"\n\n✅ Проходят: {', '.join(ok)}" if ok else "\n\n✅ Проходят: нет") +
+            (f"\n❌ Не проходят: {', '.join(bad)}" if bad else ""))
+    await notify_admins(request.app["bot"], text[:3900])
+    return web.json_response({"ok": True})
+
+
 async def redirect_root(request: web.Request):
     raise web.HTTPFound(f"{PREFIX}/")
 
@@ -514,6 +554,8 @@ def build_app(bot: Bot, bot_username: str) -> web.Application:
     r.add_get(f"{PREFIX}/logo.webp", logo)
     r.add_get(f"{PREFIX}/{{name:geoip|geosite}}.dat", geo_file)
     r.add_get(f"{PREFIX}/go", go)
+    r.add_get(f"{PREFIX}/wlcheck/", wlcheck_page)
+    r.add_post(f"{PREFIX}/wlcheck/report", wlcheck_report)
     r.add_get(f"{PREFIX}/api/me", me)
     r.add_post(f"{PREFIX}/api/trial", trial)
     r.add_post(f"{PREFIX}/api/pay", pay)

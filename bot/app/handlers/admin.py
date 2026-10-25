@@ -24,6 +24,7 @@ HELP = (
     "🛠 <b>Админка</b>\n\n"
     "/stats — статистика\n"
     "/nodes — состояние нод и автораспределение по странам\n"
+    "/wlcheck IP1 IP2 … — ссылка для клиента: проверить, какие IP проходят «белые списки» его оператора\n"
     "/top [дни] [кол-во] — кто больше всех тратит трафик (по умолчанию 30 дн., топ-20)\n"
     "/user &lt;tg_id&gt; — инфо о пользователе\n"
     "/give &lt;tg_id&gt; &lt;дни&gt; — выдать/продлить подписку\n"
@@ -63,6 +64,25 @@ async def stats(message: Message):
         f"Оплаты за 24ч: {fmt(st['day'])}\n"
         f"Оплаты за 30д: {fmt(st['month'])}"
     )
+
+
+@router.message(Command("wlcheck"))
+async def wlcheck(message: Message, command: CommandObject):
+    import re
+    ips = list(dict.fromkeys(re.findall(r"\b\d{1,3}(?:\.\d{1,3}){3}\b", command.args or "")))[:150]
+    if not ips:
+        return await message.answer("Формат: /wlcheck 1.2.3.4 5.6.7.8 … (до 150 адресов, через пробел или запятую)")
+    if not settings.miniapp_url:
+        return await message.answer("Не задан MINIAPP_URL — некуда вести клиента.")
+    link = f"{settings.miniapp_url.rstrip('/')}/wlcheck/?ips={','.join(ips)}"
+    await message.answer(
+        f"🧪 Ссылка для клиента ({len(ips)} адр.) — перешли ему вместе с текстом ниже:\n\n"
+        "Здравствуйте! Помогите, пожалуйста, подобрать сервер, который работает у вашего оператора. "
+        "Откройте ссылку на Wi‑Fi, потом выключите Wi‑Fi и VPN, нажмите «Начать проверку», "
+        "а после неё снова включите Wi‑Fi и нажмите «Отправить результат». Это займёт 2 минуты.\n\n"
+        f"{escape(link)}\n\n"
+        "Результат придёт сюда. На серверах должен быть открыт порт 443 (на новом сервере он открыт, если не включать ufw) — запускать тест не нужно.",
+        disable_web_page_preview=True)
 
 
 @router.message(Command("nodes"))

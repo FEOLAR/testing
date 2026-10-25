@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Проверка связи</title>
+<style>
+  :root { --bg:#0e1020; --card:#181b33; --text:#eef0fa; --muted:#9aa0bd; --ok:#3ecf8e; --bad:#ff6b6b; --acc:#7b7cff; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.45 -apple-system,system-ui,Segoe UI,Roboto,sans-serif; }
+  .wrap { max-width:520px; margin:0 auto; padding:20px 16px 40px; }
+  h1 { font-size:22px; margin:6px 0 14px; }
+  .card { background:var(--card); border-radius:16px; padding:16px; margin:12px 0; }
+  ol { margin:0; padding-left:20px; } li { margin:6px 0; }
+  .muted { color:var(--muted); font-size:14px; }
+  button { width:100%; border:0; border-radius:12px; padding:15px; font-size:17px; font-weight:600; color:#fff; background:var(--acc); margin-top:10px; }
+  button:disabled { opacity:.45; }
+  button.sec { background:#2a2e52; }
+  select { width:100%; padding:12px; border-radius:10px; border:0; background:#2a2e52; color:var(--text); font-size:16px; }
+  .row { display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px solid #262a4a; font-variant-numeric:tabular-nums; }
+  .row:last-child { border-bottom:0; }
+  .ok { color:var(--ok); } .bad { color:var(--bad); } .wait { color:var(--muted); }
+  #status { font-weight:600; margin-top:8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Проверка мобильного интернета</h1>
+  <div class="card">
+    <ol>
+      <li>Страница уже открыта — <b>не закрывай её</b>.</li>
+      <li>Выключи <b>Wi‑Fi</b> и <b>VPN</b>, включи мобильный интернет.</li>
+      <li>Нажми «Начать проверку» и подожди 1–2 минуты.</li>
+      <li>Включи Wi‑Fi обратно и нажми «Отправить результат».</li>
+    </ol>
+  </div>
+  <div class="card">
+    <div class="muted" style="margin-bottom:6px">Оператор мобильной связи</div>
+    <select id="op">
+      <option value="">— выбери —</option>
+      <option>МТС</option><option>Билайн</option><option>МегаФон</option><option>Т2 (Tele2)</option>
+      <option>Yota</option><option>Другой</option>
+    </select>
+    <button id="start">Начать проверку</button>
+    <div id="status" class="muted"></div>
+  </div>
+  <div class="card" id="list"></div>
+  <div class="card">
+    <button id="send" class="sec" disabled>Отправить результат</button>
+    <div id="sent" class="muted" style="margin-top:8px"></div>
+  </div>
+</div>
+<script>
+(function () {
+  var q = new URLSearchParams(location.search);
+  var ipRe = /^\d{1,3}(\.\d{1,3}){3}$/;
+  var ips = (q.get("ips") || "").split(",").map(function (s) { return s.trim(); })
+    .filter(function (s) { return ipRe.test(s); }).slice(0, 150);
+  // Контроль: ya.ru должен открываться всегда, наш мост — только без «белых списков».
+  var CONTROL = [
+    { ip: "87.250.250.242", label: "контроль: Яндекс", expect: true },
+    { ip: "77.91.95.53", label: "контроль: обычный мост", expect: false }
+  ];
+  var items = CONTROL.concat(ips.map(function (ip) { return { ip: ip, label: ip }; }));
+  var TIMEOUT = 7000, PARALLEL = 4, TRIES = 2;
+  var results = {};
+  var list = document.getElementById("list");
+
+  function draw() {
+    list.innerHTML = items.map(function (it) {
+      var r = results[it.ip], cls = "wait", txt = "ждёт";
+      if (r === "run") { txt = "проверяю…"; }
+      else if (r) { cls = r.ok ? "ok" : "bad"; txt = r.ok ? "✅ доступен (" + r.ms + " мс)" : "❌ нет связи"; }
+      return '<div class="row"><span>' + it.label + '</span><span class="' + cls + '">' + txt + "</span></div>";
+    }).join("") || '<span class="muted">Нет адресов для проверки</span>';
+  }
+
+  function probeOnce(ip) {
+    return new Promise(function (resolve) {
+      var t0 = Date.now(), done = false, ctl = window.AbortController ? new AbortController() : null;
+      var timer = setTimeout(function () { if (!done) { done = true; if (ctl) ctl.abort(); resolve({ ok: false, ms: TIMEOUT }); } }, TIMEOUT);
+      // Ответ (даже ошибка сертификата или «порт закрыт») пришёл быстро — значит, оператор пропускает IP.
+      // Если оператор режет IP, пакеты пропадают и запрос висит до таймаута.
+      fetch("https://" + ip + "/?wl=" + Math.random(), { mode: "no-cors", cache: "no-store", signal: ctl ? ctl.signal : undefined })
+        .then(fin, fin);
+      function fin() { if (done) return; done = true; clearTimeout(timer); var ms = Date.now() - t0; resolve({ ok: ms < TIMEOUT - 200, ms: ms }); }
+    });
+  }
+
+  function probe(ip) {
+    var n = 0;
+    function attempt() {
+      return probeOnce(ip).then(function (r) { n++; return (r.ok || n >= TRIES) ? r : attempt(); });
+    }
+    return attempt();
+  }
+
+  function run() {
+    var queue = items.slice(), active = 0;
+    document.getElementById("start").disabled = true;
+    document.getElementById("status").textContent = "Проверяю… не сворачивай страницу";
+    return new Promise(function (finish) {
+      function next() {
+        if (!queue.length && !active) return finish();
+        while (active < PARALLEL && queue.length) {
+          var it = queue.shift(); active++; results[it.ip] = "run"; draw();
+          (function (it) {
+            probe(it.ip).then(function (r) { results[it.ip] = r; active--; draw(); next(); });
+          })(it);
+        }
+      }
+      next();
+    }).then(function () {
+      var ya = results[CONTROL[0].ip], br = results[CONTROL[1].ip], s = "Готово.";
+      if (!ya.ok) s = "⚠️ Не открылся даже Яндекс — похоже, мобильный интернет сейчас не работает. Попробуй позже.";
+      else if (br.ok) s = "ℹ️ Сейчас «белые списки» не действуют — результат не показателен. Попробуй, когда VPN снова перестанет работать.";
+      else s = "Готово! Теперь включи Wi‑Fi и нажми «Отправить результат».";
+      document.getElementById("status").textContent = s;
+      document.getElementById("send").disabled = false;
+      document.getElementById("start").disabled = false;
+      try { localStorage.setItem("wlcheck", JSON.stringify(results)); } catch (e) {}
+    });
+  }
+
+  function send() {
+    var btn = document.getElementById("send"), out = document.getElementById("sent");
+    btn.disabled = true; out.textContent = "Отправляю…";
+    var payload = { op: document.getElementById("op").value, results: items.map(function (it) {
+      var r = results[it.ip] || {}; return { ip: it.ip, label: it.label, ok: !!r.ok, ms: r.ms || 0 };
+    }) };
+    fetch("report", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
+      .then(function (r) { if (!r.ok) throw 0; out.textContent = "✅ Отправлено, спасибо! Можно закрыть страницу."; })
+      .catch(function () { btn.disabled = false; out.textContent = "Не отправилось — проверь, что Wi‑Fi включён, и нажми ещё раз."; });
+  }
+
+  try { var saved = JSON.parse(localStorage.getItem("wlcheck") || "null"); if (saved) { results = saved; document.getElementById("send").disabled = false; } } catch (e) {}
+  document.getElementById("start").onclick = run;
+  document.getElementById("send").onclick = send;
+  draw();
+})();
+</script>
+</body>
+</html>
