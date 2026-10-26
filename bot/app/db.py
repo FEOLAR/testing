@@ -43,6 +43,8 @@ class User(Base):
     review_reminded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Когда пользователь последний раз сам заменил ссылку-подписку (защита от частых нажатий)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Бонус за пробник по реф-ссылке уже начислен (другу и пригласившему)
+    ref_trial_rewarded: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -79,6 +81,12 @@ class PromoCode(Base):
     percent: Mapped[int] = mapped_column(Integer)                # скидка, %
     max_uses: Mapped[int] = mapped_column(Integer, default=0)    # лимит активаций, 0 — без лимита
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Скидка действует только на тарифы от min_days дней (0 — на любой)
+    min_days: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # Срок действия кода (None — бессрочный)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Личный код: применить может только этот пользователь (None — общий код)
+    owner_tg_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -110,6 +118,13 @@ MIGRATIONS = [
     # хосты, которые бот спрятал из подписки из-за упавшей ноды (чтобы вернуть только их)
     "CREATE TABLE IF NOT EXISTS hidden_hosts (uuid VARCHAR(64) PRIMARY KEY, hidden_at TIMESTAMPTZ NOT NULL DEFAULT now())",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS ref_trial_rewarded BOOLEAN NOT NULL DEFAULT FALSE",
+    "ALTER TABLE promo_codes ADD COLUMN IF NOT EXISTS min_days INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE promo_codes ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ",
+    "ALTER TABLE promo_codes ADD COLUMN IF NOT EXISTS owner_tg_id BIGINT",
+    "CREATE INDEX IF NOT EXISTS ix_promo_codes_owner_tg_id ON promo_codes (owner_tg_id)",
+    "CREATE TABLE IF NOT EXISTS outages (id SERIAL PRIMARY KEY, started_at TIMESTAMPTZ NOT NULL, "
+    "ended_at TIMESTAMPTZ, compensated BOOLEAN NOT NULL DEFAULT FALSE)",
 ]
 
 

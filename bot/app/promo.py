@@ -8,7 +8,8 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
+import secrets
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, select, update
 
@@ -28,9 +29,14 @@ def discounted(value: int, percent: int) -> int:
     return max(1, round(value * (100 - percent) / 100))
 
 
+def applies(plan: Plan, promo: PromoCode | None) -> bool:
+    """Действует ли скидка кода на этот тариф (код может быть только для длинных периодов)."""
+    return bool(promo) and plan.days >= (promo.min_days or 0)
+
+
 def price(plan: Plan, promo: PromoCode | None) -> tuple[int, int]:
     """(рубли, звёзды) с учётом скидки."""
-    if not promo:
+    if not applies(plan, promo):
         return plan.rub, plan.stars
     return discounted(plan.rub, promo.percent), discounted(plan.stars, promo.percent)
 
@@ -51,6 +57,10 @@ async def check(promo: PromoCode | None, tg_id: int) -> str | None:
         return "Такого промокода нет"
     if not promo.is_active:
         return "Этот промокод сейчас не действует"
+    if promo.owner_tg_id and promo.owner_tg_id != tg_id:
+        return "Это личный промокод другого пользователя"
+    if promo.expires_at and promo.expires_at <= datetime.now(timezone.utc):
+        return "Срок действия промокода закончился"
     async with Session() as s:
         if await used_by(s, promo.id, tg_id):
             return "Ты уже использовал этот промокод"
@@ -120,6 +130,41 @@ async def create(code: str, percent: int, max_uses: int = 0) -> tuple[PromoCode 
         return promo, None
 
 
+async def create_personal(tg_id: int, percent: int, min_days: int, valid_days: int) -> PromoCode:
+    """Личный одноразовый код для одного пользователя; сразу применяется к нему (если другой не применён)."""
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    async with Session() as s:
+        for _ in range(5):
+            code = "RENEW-" + "".join(secrets.choice(alphabet) for _ in range(6))
+            if not (await s.execute(select(PromoCode.id).where(PromoCode.code == code))).first():
+                break
+        promo = PromoCode(code=code, percent=percent, max_uses=1, is_active=True, min_days=min_days,
+                          owner_tg_id=tg_id, expires_at=datetime.now(timezone.utc) + timedelta(days=valid_days))
+        s.add(promo)
+        await s.flush()
+        await s.execute(update(User).where(User.tg_id == tg_id, User.promo_id.is_(None)).values(promo_id=promo.id))
+        await s.commit()
+        return promo
+
+
+def scope_text(promo: PromoCode) -> str:
+    """«на любой тариф» / «на тарифы от 3 месяцев» — для подписей."""
+    d = promo.min_days or 0
+    if d <= 30:
+        return "на любой тариф"
+    return f"на тарифы от {round(d / 30)} мес."
+
+
+async def personal_stats() -> tuple[int, int]:
+    """Личные коды продления: (выдано, использовано)."""
+    async with Session() as s:
+        issued = await s.scalar(select(func.count()).select_from(PromoCode).where(PromoCode.owner_tg_id.is_not(None))) or 0
+        used = await s.scalar(select(func.count(func.distinct(Payment.promo_id))).join(
+            PromoCode, PromoCode.id == Payment.promo_id).where(
+            PromoCode.owner_tg_id.is_not(None), Payment.status.in_(USED))) or 0
+    return issued, used
+
+
 async def update_promo(promo_id: int, *, active: bool | None = None, max_uses: int | None = None) -> PromoCode | None:
     async with Session() as s:
         promo = await s.get(PromoCode, promo_id)
@@ -135,7 +180,8 @@ async def update_promo(promo_id: int, *, active: bool | None = None, max_uses: i
 
 async def list_all() -> list[dict]:
     async with Session() as s:
-        promos = (await s.execute(select(PromoCode).order_by(PromoCode.id.desc()))).scalars().all()
+        promos = (await s.execute(select(PromoCode).where(PromoCode.owner_tg_id.is_(None))
+                                  .order_by(PromoCode.id.desc()))).scalars().all()
         out = []
         for p in promos:
             out.append(as_dict(p, await uses_count(s, p.id)))
@@ -163,7 +209,8 @@ async def uses(promo_id: int) -> list[dict]:
 # ---------- счёт Telegram Stars ----------
 
 def stars_payload(plan: Plan, promo: PromoCode | None) -> str:
-    return f"vpn:{plan.code}" + (f":p{promo.id}" if promo else "")
+    # код, который на этот тариф не действует, в счёт не пишем — иначе он «сгорит» без скидки
+    return f"vpn:{plan.code}" + (f":p{promo.id}" if applies(plan, promo) else "")
 
 
 def parse_payload(payload: str) -> tuple[str, int | None]:

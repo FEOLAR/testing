@@ -7,7 +7,7 @@ from aiogram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select, update
 
-from . import keyboards as kb, texts
+from . import keyboards as kb, promo as promos, texts
 from .balancer import balance_hosts
 from .exitwatch import check_exits
 from .handlers.engage import review_reminders
@@ -108,7 +108,15 @@ async def reminders(bot: Bot) -> None:
         kind = texts.reminder_stage(user.expire_at - now)
         if not kind or rank[kind] <= rank.get(user.notice or "", 0):
             continue
-        await safe_send(bot, user.tg_id, texts.reminder(kind, user), reply_markup=kb.renew())
+        text = texts.reminder(kind, user)
+        if kind == "24h" and settings.renew_promo_percent > 0:
+            try:  # личная скидка на длинные периоды — один раз на каждый срок подписки
+                promo = await promos.create_personal(user.tg_id, settings.renew_promo_percent,
+                                                     settings.renew_promo_min_days, settings.renew_promo_valid_days)
+                text += texts.renew_promo(promo)
+            except Exception:
+                log.exception("renew promo failed for %s", user.tg_id)
+        await safe_send(bot, user.tg_id, text, reply_markup=kb.renew())
         async with Session() as s:
             await s.execute(update(User).where(User.tg_id == user.tg_id).values(notice=kind))
             await s.commit()

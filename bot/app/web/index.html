@@ -509,7 +509,7 @@ async function startTrial() {
 // ---------- ТАРИФЫ ----------
 function promoBlock(me) {
   if (me.promo) return `<div class="card promo-on"><div><div class="muted small">Промокод применён</div>
-      <div><span class="promo-code">${esc(me.promo.code)}</span> · скидка ${me.promo.percent}%</div></div>
+      <div><span class="promo-code">${esc(me.promo.code)}</span> · скидка ${me.promo.percent}%${me.promo.min_days > 30 ? ` на тарифы от ${Math.round(me.promo.min_days / 30)} мес.` : ''}</div></div>
       <button class="btn sec sm" id="promoOff">Убрать</button></div>`;
   return `<div class="card"><div class="h3">Есть промокод?</div>
     <div class="field"><input id="promoIn" placeholder="Введи промокод" autocomplete="off" autocapitalize="characters" maxlength="32">
@@ -530,7 +530,7 @@ function renderBuy() {
     <div class="plans">${me.plans.map(x => `<button class="plan ${x.code === S.plan ? 'on' : ''}" data-plan="${x.code}">
       <div class="radio"></div><div class="t"><div style="font-weight:700">${esc(x.title)}${x.discount ? `<span class="save">−${x.discount}%</span>` : ''}</div>
       <div class="muted small">${x.per_month} ₽ в месяц</div></div>
-      <div class="p">${me.promo ? `<span class="old">${x.rub_full} ₽</span>` : ''}${x.rub} ₽<div class="muted small sum-ic" style="font-weight:600;gap:4px;justify-content:flex-end">${x.stars} ${ic('star', 13)}</div></div></button>`).join('')}</div>
+      <div class="p">${x.rub !== x.rub_full ? `<span class="old">${x.rub_full} ₽</span>` : ''}${x.rub} ₽<div class="muted small sum-ic" style="font-weight:600;gap:4px;justify-content:flex-end">${x.stars} ${ic('star', 13)}</div></div></button>`).join('')}</div>
     <div style="margin-top:14px">${promoBlock(me)}</div>
     <div class="card">
       <div class="h3">Оплата: ${esc(p.title)}</div><div class="muted small">Подписка активируется сразу после оплаты.</div>
@@ -667,7 +667,8 @@ function renderRef() {
   view.innerHTML = `<div class="h2">Пригласи друга</div>
     <div class="card" style="border-color:rgba(255,255,255,.5);box-shadow:0 0 22px rgba(255,255,255,.10)">
       <div class="big">+${r.bonus_days} ${plural(r.bonus_days,'день','дня','дней')}</div>
-      <div class="muted">за каждого друга, который оплатит подписку</div></div>
+      <div class="muted">тебе за каждого друга, который оплатит подписку</div>
+      ${r.trial_days ? `<div class="muted small" style="margin-top:6px">А когда друг возьмёт бесплатные дни — +${r.trial_days} ${plural(r.trial_days,'день','дня','дней')} ему и тебе</div>` : ''}</div>
     <div class="card"><div class="h3">Твоя ссылка</div>
       <div class="linkbox" style="margin-top:10px"><span>${esc(r.link)}</span></div>
       <div class="btns"><button class="btn" id="refShare">${ic('share',17,'#fff')} Поделиться</button><button class="btn sec" id="refCopy">${ic('copy',17)} Копировать</button></div></div>

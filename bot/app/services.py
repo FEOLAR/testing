@@ -4,7 +4,7 @@ import logging
 from datetime import timedelta
 
 from aiogram import Bot
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 
 from .config import settings
 from .db import Payment, Session, User, utcnow
@@ -116,6 +116,45 @@ async def reward_referrer(bot: Bot, tg_id: int) -> None:
         await safe_send(bot, referrer_id, texts.referral_bonus(settings.referral_bonus_days))
     except Exception:
         log.exception("referral bonus failed for %s", referrer_id)
+
+
+async def reward_referral_trial(bot: Bot, tg_id: int, notify_friend: bool = True) -> User | None:
+    """Друг пришёл по реф-ссылке и взял бесплатные дни (пробник или бонус за канал):
+    +REFERRAL_TRIAL_DAYS ему и пригласившему. Один раз на друга; пригласившему — не больше
+    REFERRAL_TRIAL_LIMIT таких бонусов за 30 дней (защита от накрутки фейковыми аккаунтами).
+    Возвращает обновлённого друга, если ему начислили дни."""
+    days = settings.referral_trial_days
+    if days <= 0:
+        return None
+    async with Session() as s:
+        res = await s.execute(
+            update(User).where(User.tg_id == tg_id, User.referrer_id.is_not(None),
+                               User.ref_trial_rewarded.is_(False))
+            .values(ref_trial_rewarded=True).returning(User.referrer_id))
+        await s.commit()
+        referrer_id = res.scalar_one_or_none()
+    if not referrer_id:
+        return None
+    friend = None
+    try:
+        friend = await grant_days(tg_id, days)
+        if notify_friend:
+            await safe_send(bot, tg_id, texts.referral_trial_friend(days))
+    except Exception:
+        log.exception("referral trial: friend %s", tg_id)
+    async with Session() as s:  # лимит считаем по друзьям, получившим бонус за последние 30 дней
+        recent = await s.scalar(select(func.count()).select_from(User).where(
+            User.referrer_id == referrer_id, User.ref_trial_rewarded.is_(True),
+            User.created_at > utcnow() - timedelta(days=30))) or 0
+    if settings.referral_trial_limit and recent > settings.referral_trial_limit:
+        log.warning("referral trial: limit reached for referrer %s (%s)", referrer_id, recent)
+        return friend
+    try:
+        await grant_days(referrer_id, days)
+        await safe_send(bot, referrer_id, texts.referral_trial_inviter(days))
+    except Exception:
+        log.exception("referral trial: referrer %s", referrer_id)
+    return friend
 
 
 async def activate_trial(tg_id: int) -> User | None:
@@ -268,7 +307,7 @@ async def create_crypto_payment(tg_id: int, plan, promo=None) -> Payment | None:
     rub, _ = promos.price(plan, promo)
     async with Session() as s:
         payment = Payment(tg_id=tg_id, plan_code=plan.code, days=plan.days,
-                          method="crypto", amount=f"{rub} RUB", promo_id=promo.id if promo else None)
+                          method="crypto", amount=f"{rub} RUB", promo_id=promo.id if promos.applies(plan, promo) else None)
         s.add(payment)
         await s.commit()
         try:
@@ -299,7 +338,7 @@ async def create_card_payment(tg_id: int, plan, promo=None, bot_username: str = 
     rub, _ = promos.price(plan, promo)
     async with Session() as s:
         payment = Payment(tg_id=tg_id, plan_code=plan.code, days=plan.days, method="card",
-                          amount=f"{rub} RUB", promo_id=promo.id if promo else None)
+                          amount=f"{rub} RUB", promo_id=promo.id if promos.applies(plan, promo) else None)
         s.add(payment)
         await s.commit()
         try:

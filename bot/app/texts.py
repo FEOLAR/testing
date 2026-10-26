@@ -167,7 +167,8 @@ def tariffs(promo=None) -> str:
     from .promo import price
     head = [title("card", "Тарифы") + "\n", f"<i>Безлимитный трафик, подключение до {settings.device_limit} устройств</i>\n"]
     if promo:
-        head.append(f"{e('ticket')} Промокод <b>{escape(promo.code)}</b>: скидка <b>{promo.percent}%</b> на любой тариф\n")
+        from .promo import scope_text
+        head.append(f"{e('ticket')} Промокод <b>{escape(promo.code)}</b>: скидка <b>{promo.percent}%</b> {scope_text(promo)}\n")
     base = settings.plan_list[0]
     rows = []
     for p in settings.plan_list:
@@ -175,7 +176,7 @@ def tariffs(promo=None) -> str:
         discount = round(100 - per_month * 100 / base.rub) if p is not base else 0
         tail = f" <i>(-{discount}%)</i>" if discount > 0 else ""
         rub, stars = price(p, promo)
-        old = f"<s>{p.rub} ₽</s> " if promo else ""
+        old = f"<s>{p.rub} ₽</s> " if rub != p.rub else ""
         rows.append(f"• {p.title} — {old}{rub} ₽ / {stars} {e('star')}{tail}")
     return "\n".join(head) + "<blockquote>" + "\n".join(rows) + "</blockquote>"
 
@@ -195,7 +196,8 @@ def legal_note() -> str:
 def choose_method(plan: Plan, promo=None) -> str:
     from .promo import price
     rub, _ = price(plan, promo)
-    tail = f"\nК оплате: <s>{plan.rub} ₽</s> <b>{rub} ₽</b> — промокод {escape(promo.code)}, −{promo.percent}%" if promo else ""
+    tail = (f"\nК оплате: <s>{plan.rub} ₽</s> <b>{rub} ₽</b> — промокод {escape(promo.code)}, −{promo.percent}%"
+            if promo and rub != plan.rub else "")
     return f"{title('card', 'Оплата')}\n\nТариф: <b>{plan.title}</b>{tail}\n\n<i>Как удобнее оплатить?</i>" + legal_note()
 
 
@@ -297,10 +299,16 @@ def disconnect_help() -> str:
 
 
 def referral(link: str, invited: int, paid_count: int) -> str:
-    d = settings.referral_bonus_days
+    d, t = settings.referral_bonus_days, settings.referral_trial_days
+    lines = []
+    if t > 0:
+        lines.append(f"• друг возьмёт бесплатные дни — <b>+{_days(t)}</b> ему и тебе")
+    if d > 0:
+        lines.append(f"• друг оформит подписку — тебе ещё <b>+{_days(d)}</b>")
     return (
         f"{title('friends', 'Пригласи друга')}\n\n"
-        f"За каждого друга, который оплатит подписку, ты получишь <b>+{d} {plural(d, 'день', 'дня', 'дней')}</b>\n\n"
+        "Отправь ссылку тем, кому хочешь помочь:\n"
+        f"<blockquote>{chr(10).join(lines)}</blockquote>\n"
         f"{e('link')} Твоя ссылка:\n<blockquote><code>{escape(link)}</code></blockquote>\n\n"
         f"Приглашено: {invited}\nОплатили: {paid_count}"
     )
@@ -308,6 +316,25 @@ def referral(link: str, invited: int, paid_count: int) -> str:
 
 def referral_bonus(days: int) -> str:
     return f"{e('gift')} Твой друг оформил подписку — тебе начислено <b>+{days} дн.</b>!"
+
+
+def referral_trial_inviter(days: int) -> str:
+    return f"{e('gift')} Друг подключился по твоей ссылке — тебе <b>+{_days(days)}</b>!"
+
+
+def referral_trial_friend(days: int) -> str:
+    return f"{e('gift')} Ты пришёл по приглашению друга — дарим ещё <b>+{_days(days)}</b> к бесплатным дням!"
+
+
+def renew_promo(promo) -> str:
+    return (f"\n\n{e('ticket')} Для тебя личная скидка <b>{promo.percent}%</b> на продление на 3, 6 или 12 месяцев — "
+            f"уже применена в «Тарифах». Действует до <b>{fmt_date(promo.expires_at)}</b>.")
+
+
+def outage_compensated(days: int) -> str:
+    return (f"{e('gift')} <b>Извини за перебои</b>\n\n"
+            f"VPN был недоступен дольше часа. Мы добавили к твоей подписке <b>+{_days(days)}</b> — "
+            "ничего делать не нужно.")
 
 
 def _days(d: int) -> str:

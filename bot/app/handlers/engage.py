@@ -25,7 +25,7 @@ from .. import keyboards as kb, texts, ui
 from ..config import settings
 from ..db import Session, User
 from ..emoji import e
-from ..services import get_or_create_user, grant_days, safe_send
+from ..services import get_or_create_user, grant_days, reward_referral_trial, safe_send
 
 router = Router()
 log = logging.getLogger(__name__)
@@ -113,6 +113,7 @@ async def channel_check(cb: CallbackQuery):
         return await cb.message.answer(f"{e('no')} Не получилось начислить бонус. Попробуй через минуту.")
     if user is None:
         return await cb.message.answer("Бесплатные дни уже получены — бонус за канал не суммируется с пробным периодом.")
+    user = await reward_referral_trial(cb.bot, cb.from_user.id) or user
     await ui.show(cb, texts.channel_ok(user), reply_markup=kb.profile(True), photo="channel")
 
 
@@ -130,7 +131,8 @@ async def gate_check(cb: CallbackQuery):
         return await cb.answer(texts.channel_not_member(), show_alert=True)
     if settings.channel_bonus_days > 0:
         try:
-            await claim_channel_bonus(cb.from_user.id)  # None — бонус уже был, просто пускаем в меню
+            if await claim_channel_bonus(cb.from_user.id):  # None — бонус уже был, просто пускаем в меню
+                await reward_referral_trial(cb.bot, cb.from_user.id)
         except Exception:
             log.exception("gate bonus grant failed")
             return await cb.answer("Подписка есть, но не получилось начислить бонус. Нажми «Я подписался» ещё раз "

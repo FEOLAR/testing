@@ -14,7 +14,7 @@ from ..config import settings
 from ..emoji import e
 from ..db import Session, User
 from ..remnawave import panel
-from ..services import RevokeError, activate_trial, get_or_create_user, refresh_from_panel, revoke_link
+from ..services import RevokeError, activate_trial, reward_referral_trial, get_or_create_user, refresh_from_panel, revoke_link
 from .engage import gated, send_gate
 
 router = Router()
@@ -137,6 +137,7 @@ async def trial(cb: CallbackQuery):
         return await cb.message.answer(f"{e('no')} Не получилось создать подписку. Попробуй через минуту.")
     if user is None:
         return await cb.message.answer("Пробный период уже использован.")
+    user = await reward_referral_trial(cb.bot, cb.from_user.id) or user
     await ui.show(cb, texts.trial_ok(user), reply_markup=kb.profile(True))
 
 

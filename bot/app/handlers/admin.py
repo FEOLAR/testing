@@ -8,10 +8,10 @@ from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramRetryAfter
 from aiogram.filters import Command, CommandObject
 from aiogram.types import FSInputFile, InputSticker, Message
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from ..config import settings
-from ..db import Payment, Session, User
+from ..db import Payment, Session, User, utcnow
 from ..remnawave import PanelError, panel
 from ..services import (RevokeError, admin_give, collect_stats, reconcile_stars, refresh_from_panel,
                         restore_deleted, revoke_link, safe_send, traffic_top)
@@ -31,6 +31,7 @@ HELP = (
     "/give &lt;tg_id&gt; &lt;дни&gt; — выдать/продлить подписку\n"
     "/ban &lt;tg_id&gt; · /unban &lt;tg_id&gt; — отключить/включить VPN\n"
     "/revoke &lt;tg_id&gt; — заменить пользователю ссылку-подписку (старая перестанет работать)\n"
+    "/compensate &lt;дни&gt; — добавить дни всем активным подпискам (например, после сбоя)\n"
     "/restore — найти пользователей с активной подпиской, удалённых из панели; /restore apply — вернуть их с прежними ссылками\n"
     "/refund &lt;id оплаты&gt; — вернуть звёзды и забрать оплаченные дни\n"
     "/promo — промокоды; /promo_add КОД СКИДКА% [ЛИМИТ]; /promo_on|/promo_off КОД; /promo_limit КОД N; /promo_uses КОД\n"
@@ -184,6 +185,23 @@ async def ban(message: Message, command: CommandObject):
     enable = command.command == "unban"
     await panel.set_enabled(f"tg_{tg_id}", enable)
     await message.answer("✅ Включён" if enable else "⛔ Отключён")
+
+
+@router.message(Command("compensate"))
+async def compensate_cmd(message: Message, command: CommandObject):
+    from ..outage import compensate_all
+    args = (command.args or "").split()
+    if not args or not args[0].isdigit() or not 1 <= int(args[0]) <= 30:
+        return await message.answer("Формат: /compensate 2 — покажет, скольким подпискам добавится 2 дня")
+    days = int(args[0])
+    async with Session() as s:
+        count = await s.scalar(select(func.count()).select_from(User).where(User.expire_at > utcnow())) or 0
+    if len(args) < 2 or args[1].lower() != "yes":
+        return await message.answer(f"Добавлю +{days} дн. {count} активным подпискам и пришлю им сообщение "
+                                    f"«Извини за перебои».\nПодтверди: <code>/compensate {days} yes</code>")
+    note = await message.answer(f"⏳ Начисляю +{days} дн. {count} подпискам…")
+    ok, failed = await compensate_all(message.bot, days)
+    await note.edit_text(f"✅ Начислено +{days} дн.: {ok}" + (f", ошибок: {failed}" if failed else ""))
 
 
 @router.message(Command("restore"))
@@ -463,6 +481,10 @@ async def promo_list(message: Message):
     from .. import promo as promos
     items = await promos.list_all()
     body = "\n".join(_promo_line(p) for p in items) or "Промокодов пока нет."
+    issued, used = await promos.personal_stats()
+    if issued:
+        body += (f"\n\nЛичные скидки −{settings.renew_promo_percent}% в напоминании о продлении: "
+                 f"выдано {issued}, использовано {used}")
     await message.answer("🎟 <b>Промокоды</b>\n🟢 работает · 🟡 закончились активации · 🔴 выключен\n\n" + body +
                          "\n\nСоздать: <code>/promo_add КОД 20 100</code> (скидка 20%, 100 активаций; без лимита — 0)")
 

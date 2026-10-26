@@ -92,6 +92,16 @@ class Settings(BaseSettings):
     # «Заменить ссылку»: не чаще раза в N минут на пользователя; сбрасывать ли заодно устройства
     revoke_cooldown_min: int = 10
     revoke_reset_devices: bool = True
+    # Рефералка: за пробник друга по ссылке — +N дней другу и +N пригласившему (не больше LIMIT в месяц)
+    referral_trial_days: int = 7
+    referral_trial_limit: int = 10
+    # Личный промокод в напоминании за сутки до конца: скидка % на тарифы от MIN_DAYS дней, действует N дней
+    renew_promo_percent: int = 15
+    renew_promo_min_days: int = 90
+    renew_promo_valid_days: int = 3
+    # Компенсация: VPN недоступен у всех (все ноды недоступны) дольше N минут → +DAYS всем активным
+    outage_compensation_days: int = 2
+    outage_min_minutes: int = 60
     referral_bonus_days: int = 7
 
     # Platega — оплата картами и СБП. Пусто — способ не показывается.

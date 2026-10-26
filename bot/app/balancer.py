@@ -24,7 +24,7 @@ from html import escape
 
 from aiogram import Bot
 
-from . import bridgewatch
+from . import bridgewatch, outage
 from .config import settings
 from .db import Session
 from .remnawave import panel
@@ -149,6 +149,11 @@ async def balance_hosts(bot: Bot) -> None:
             await notify_admins(bot, f"🔴 Нода <b>{escape(n['name'])}</b> <code>{escape(n.get('address', ''))}</code>: "
                                      f"{node_problem(n)}.\nУбираю её из «Авто» и прячу её страны из подписки — "
                                      "клиенты уйдут на другие ноды, когда Happ обновит подписку.")
+    try:  # VPN недоступен у всех дольше часа → компенсация
+        enabled = [n for n in nodes if not n.get("isDisabled")]
+        await outage.track(bot, len(enabled), sum(1 for n in enabled if _state.get(n["uuid"])))
+    except Exception:
+        log.exception("balancer: outage tracking failed")
     update_overload(nodes)
     try:
         await sync_hidden(bot, hosts, nodes)

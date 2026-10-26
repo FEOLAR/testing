@@ -21,7 +21,7 @@ from .keyboards import support_url
 from . import promo as promos
 from .db import Payment, Session, User
 from .remnawave import panel, parse_dt
-from .services import (RevokeError, revoke_link, activate_trial, admin_give, apply_card_status, check_payment, collect_stats,
+from .services import (RevokeError, revoke_link, reward_referral_trial, activate_trial, admin_give, apply_card_status, check_payment, collect_stats,
                        create_card_payment, create_crypto_payment, get_or_create_user, refresh_from_panel)
 
 log = logging.getLogger(__name__)
@@ -115,7 +115,7 @@ async def referral_info(bot_username: str, tg_id: int) -> dict:
         paid = await s.scalar(select(func.count()).where(User.referrer_id == tg_id,
                                                          User.referral_rewarded.is_(True)))
     return {"link": f"https://t.me/{bot_username}?start=ref_{tg_id}",
-            "invited": invited or 0, "paid": paid or 0, "bonus_days": settings.referral_bonus_days}
+            "invited": invited or 0, "paid": paid or 0, "bonus_days": settings.referral_bonus_days, "trial_days": settings.referral_trial_days}
 
 
 async def me(request: web.Request) -> web.Response:
@@ -149,7 +149,7 @@ async def me(request: web.Request) -> web.Response:
         "sub": panel_sub(pu, user),
         "trial": {"available": not user.trial_used and settings.trial_days > 0, "days": settings.trial_days},
         "plans": plans,
-        "promo": {"code": promo.code, "percent": promo.percent} if promo else None,
+        "promo": {"code": promo.code, "percent": promo.percent, "min_days": promo.min_days or 0} if promo else None,
         "crypto_enabled": settings.crypto_enabled,
         "card_enabled": settings.card_enabled,
         "card_title": settings.platega_title,
@@ -167,6 +167,7 @@ async def trial(request: web.Request) -> web.Response:
         return err("Пробный период уже использован")
     if await activate_trial(user.tg_id) is None:
         return err("Пробный период уже использован")
+    await reward_referral_trial(request.app["bot"], user.tg_id)
     return web.json_response({"ok": True})
 
 
@@ -217,7 +218,8 @@ async def promo_apply(request: web.Request) -> web.Response:
     promo, error = await promos.apply(user.tg_id, code)
     if error:
         return err(error)
-    return web.json_response({"ok": True, "promo": {"code": promo.code, "percent": promo.percent}})
+    return web.json_response({"ok": True, "promo": {"code": promo.code, "percent": promo.percent,
+                                                     "min_days": promo.min_days or 0}})
 
 
 async def payment_status(request: web.Request) -> web.Response:
