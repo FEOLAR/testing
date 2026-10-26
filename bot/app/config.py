@@ -10,6 +10,7 @@ class Plan:
     days: int
     rub: int
     stars: int
+    family: bool = False   # семейный тариф: больше устройств (FAMILY_DEVICE_LIMIT)
 
     @property
     def title(self) -> str:
@@ -89,6 +90,9 @@ class Settings(BaseSettings):
 
     plans: str = "30:199:150,90:549:400,180:999:750,365:1790:1350"
     trial_days: int = 3
+    # Семейный тариф: до FAMILY_DEVICE_LIMIT устройств. Купил обычный после семейного — лимит снова DEVICE_LIMIT
+    family_plans: str = "30:590:390,90:1590:1060,180:3000:2000,365:4950:3300"
+    family_device_limit: int = 10
     # «Заменить ссылку»: не чаще раза в N минут на пользователя; сбрасывать ли заодно устройства
     revoke_cooldown_min: int = 10
     revoke_reset_devices: bool = True
@@ -139,10 +143,23 @@ class Settings(BaseSettings):
             out.append(Plan(code=f"d{days}", days=days, rub=rub, stars=stars))
         return out
 
+    @property
+    def family_plan_list(self) -> list[Plan]:
+        """Семейные тарифы (FAMILY_PLANS, тот же формат дни:рубли:звёзды). Пусто — семейного тарифа нет."""
+        out = []
+        for chunk in self.family_plans.split(","):
+            if chunk.strip():
+                days, rub, stars = (int(v) for v in chunk.strip().split(":"))
+                out.append(Plan(code=f"f{days}", days=days, rub=rub, stars=stars, family=True))
+        return out
+
     def plan(self, code: str) -> Plan | None:
         if code == TEST_PLAN.code:  # скрытый тариф для проверки оплаты админом: 1 ⭐ = 1 день
             return TEST_PLAN
-        return next((p for p in self.plan_list if p.code == code), None)
+        return next((p for p in self.plan_list + self.family_plan_list if p.code == code), None)
+
+    def plan_devices(self, plan: Plan) -> int:
+        return self.family_device_limit if plan.family else self.device_limit
 
     @cached_property
     def channel_name(self) -> str:

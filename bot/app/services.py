@@ -38,12 +38,19 @@ async def get_or_create_user(tg_id: int, username: str | None, first_name: str |
         return user, True
 
 
-async def grant_days(tg_id: int, days: int) -> User:
-    """Добавить дни в панели и обновить кэш в БД."""
+async def grant_days(tg_id: int, days: int, plan=None) -> User:
+    """Добавить дни в панели и обновить кэш в БД.
+    plan — оплаченный тариф: семейный ставит лимит FAMILY_DEVICE_LIMIT, обычный после семейного
+    возвращает DEVICE_LIMIT. Без plan (пробник, бонусы, /give) лимит не меняется."""
     async with Session() as s:
         user = await s.get(User, tg_id)
+        set_limit = None
+        if plan is not None and plan.code != "test" and (plan.family or user.family):
+            set_limit = settings.plan_devices(plan)
         pu = await panel.add_days(user.panel_username, tg_id, days,
-                                  short_uuid=short_uuid_from_url(user.sub_url))
+                                  short_uuid=short_uuid_from_url(user.sub_url), set_limit=set_limit)
+        if set_limit is not None:
+            user.family = plan.family
         user.sub_url = pu.get("subscriptionUrl")
         user.expire_at = parse_dt(pu["expireAt"])
         # стадии, которые уже наступили к моменту выдачи (например, /give 1), не присылаем
@@ -68,7 +75,7 @@ async def process_payment(bot: Bot, payment_id: int) -> bool:
         payment = await s.get(Payment, payment_id)
 
     try:
-        user = await grant_days(payment.tg_id, payment.days)
+        user = await grant_days(payment.tg_id, payment.days, plan=settings.plan(payment.plan_code))
     except Exception:
         log.exception("grant failed for payment %s", payment_id)
         async with Session() as s:

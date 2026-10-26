@@ -45,6 +45,8 @@ class User(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Бонус за пробник по реф-ссылке уже начислен (другу и пригласившему)
     ref_trial_rewarded: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Последняя покупка — семейный тариф (лимит FAMILY_DEVICE_LIMIT)
+    family: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -119,6 +121,7 @@ MIGRATIONS = [
     "CREATE TABLE IF NOT EXISTS hidden_hosts (uuid VARCHAR(64) PRIMARY KEY, hidden_at TIMESTAMPTZ NOT NULL DEFAULT now())",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS ref_trial_rewarded BOOLEAN NOT NULL DEFAULT FALSE",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS family BOOLEAN NOT NULL DEFAULT FALSE",
     "ALTER TABLE promo_codes ADD COLUMN IF NOT EXISTS min_days INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE promo_codes ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ",
     "ALTER TABLE promo_codes ADD COLUMN IF NOT EXISTS owner_tg_id BIGINT",

@@ -128,16 +128,22 @@ async def me(request: web.Request) -> web.Response:
             user = await refresh_from_panel(user)
     except Exception:
         log.exception("panel get_user failed")
-    base = settings.plan_list[0]
     promo = await promos.current(user.tg_id)
-    plans = []
-    for p in settings.plan_list:
-        per_month = round(p.rub / (p.days / 30))
-        rub, stars = promos.price(p, promo)
-        plans.append({"code": p.code, "title": p.title, "days": p.days, "rub": rub, "stars": stars,
-                      "rub_full": p.rub, "stars_full": p.stars,
-                      "per_month": round(rub / (p.days / 30)),
-                      "discount": max(0, round(100 - per_month * 100 / base.rub)) if p is not base else 0})
+
+    def plans_json(items: list) -> list[dict]:
+        out = []
+        for p in items:
+            base = items[0]
+            per_month = round(p.rub / (p.days / 30))
+            rub, stars = promos.price(p, promo)
+            out.append({"code": p.code, "title": p.title, "days": p.days, "rub": rub, "stars": stars,
+                        "rub_full": p.rub, "stars_full": p.stars,
+                        "per_month": round(rub / (p.days / 30)),
+                        "discount": max(0, round(100 - per_month * 100 / base.rub)) if p is not base else 0})
+        return out
+
+    plans = plans_json(settings.plan_list)
+    family_plans = plans_json(settings.family_plan_list)
     bot_username = request.app["bot_username"]
     return web.json_response({
         "user": {"id": tg.id, "first_name": tg.first_name, "username": tg.username},
@@ -149,6 +155,9 @@ async def me(request: web.Request) -> web.Response:
         "sub": panel_sub(pu, user),
         "trial": {"available": not user.trial_used and settings.trial_days > 0, "days": settings.trial_days},
         "plans": plans,
+        "family_plans": family_plans,
+        "family": bool(user.family),
+        "device_limits": {"regular": settings.device_limit, "family": settings.family_device_limit},
         "promo": {"code": promo.code, "percent": promo.percent, "min_days": promo.min_days or 0} if promo else None,
         "crypto_enabled": settings.crypto_enabled,
         "card_enabled": settings.card_enabled,
@@ -413,6 +422,17 @@ def _info_page(bot_username: str) -> str:
         rows.append(f'<div class="plan"><div class="t"><b>{escape(p.title)}</b>{save}'
                     f'<div class="m">{per_month} ₽ в месяц</div></div>'
                     f'<div class="p">{p.rub} ₽<div class="m">{p.stars} ⭐</div></div></div>')
+    fam = settings.family_plan_list
+    if fam:
+        rows.append(f'<div class="m" style="margin:16px 4px 8px;font-weight:700">Семейный — до '
+                    f'{settings.family_device_limit} устройств</div>')
+        for p in fam:
+            per_month = round(p.rub / (p.days / 30))
+            disc = round(100 - per_month * 100 / fam[0].rub) if p is not fam[0] else 0
+            save = f'<span class="save">−{disc}%</span>' if disc > 0 else ""
+            rows.append(f'<div class="plan"><div class="t"><b>{escape(p.title)}</b>{save}'
+                        f'<div class="m">{per_month} ₽ в месяц</div></div>'
+                        f'<div class="p">{p.rub} ₽<div class="m">{p.stars} ⭐</div></div></div>')
     trial = (f"Новым пользователям — {settings.trial_days} дн. бесплатно." if settings.trial_days > 0 else "")
     support = (f'<div class="h2">Поддержка</div><a class="btn sec" href="{escape(support_url(), quote=True)}">'
                f'💬 Написать в поддержку</a>' if settings.support_username else "")

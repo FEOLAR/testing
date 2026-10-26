@@ -163,22 +163,37 @@ def revoke_done(user) -> str:
     )
 
 
-def tariffs(promo=None) -> str:
+def tariffs(promo=None, family: bool = False) -> str:
     from .promo import price
-    head = [title("card", "Тарифы") + "\n", f"<i>Безлимитный трафик, подключение до {settings.device_limit} устройств</i>\n"]
+    plans = settings.family_plan_list if family else settings.plan_list
+    devices = settings.family_device_limit if family else settings.device_limit
+    if family:
+        head = [title("friends", "Семейный тариф") + "\n",
+                f"<i>Одна подписка на всю семью: до {devices} устройств — телефоны, ноутбуки, ТВ. "
+                "Безлимитный трафик.</i>\n"]
+    else:
+        head = [title("card", "Тарифы") + "\n", f"<i>Безлимитный трафик, подключение до {devices} устройств</i>\n"]
     if promo:
         from .promo import scope_text
         head.append(f"{e('ticket')} Промокод <b>{escape(promo.code)}</b>: скидка <b>{promo.percent}%</b> {scope_text(promo)}\n")
-    base = settings.plan_list[0]
+    base = plans[0]
     rows = []
-    for p in settings.plan_list:
+    for p in plans:
         per_month = round(p.rub / (p.days / 30))
         discount = round(100 - per_month * 100 / base.rub) if p is not base else 0
         tail = f" <i>(-{discount}%)</i>" if discount > 0 else ""
         rub, stars = price(p, promo)
         old = f"<s>{p.rub} ₽</s> " if rub != p.rub else ""
         rows.append(f"• {p.title} — {old}{rub} ₽ / {stars} {e('star')}{tail}")
-    return "\n".join(head) + "<blockquote>" + "\n".join(rows) + "</blockquote>"
+    out = "\n".join(head) + "<blockquote>" + "\n".join(rows) + "</blockquote>"
+    if family:
+        out += (f"\n<i>Дни добавляются к текущему сроку. Если потом продлить обычным тарифом — "
+                f"лимит снова станет {settings.device_limit} устройства.</i>")
+    elif settings.family_plan_list:
+        fam = settings.family_plan_list[0]
+        out += (f"\n{e('friends')} Нужно больше устройств? <b>Семейный</b> — до {settings.family_device_limit} "
+                f"устройств от {fam.rub} ₽ в месяц.")
+    return out
 
 
 def promo_ask() -> str:
@@ -223,10 +238,13 @@ def crypto_invoice(plan: Plan, rub: int | None = None) -> str:
 
 
 def paid(user, days: int) -> str:
+    family = (f"Устройства: до <b><i>{settings.family_device_limit}</i></b> — семейный тариф\n"
+              if getattr(user, "family", False) else "")
     return (
         f"{title('ok', 'Оплата прошла!')}\n\n"
         f"Добавлено <b><i>{days} {plural(days, 'день', 'дня', 'дней')}</i></b>\n"
-        f"Подписка активна до <b><i>{fmt_date(user.expire_at)}</i></b>\n\n"
+        f"Подписка активна до <b><i>{fmt_date(user.expire_at)}</i></b>\n"
+        f"{family}\n"
         f"{e('link')} Ссылка-подписка\n"
         f'<pre><code class="language-копировать">{escape(user.sub_url or "")}</code></pre>\n\n'
         "<i>Как подключиться — кнопка «Инструкция» в меню.</i>"

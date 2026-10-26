@@ -66,13 +66,13 @@ class Remnawave:
         return await self._req("GET", f"/api/users/by-username/{username}")
 
     async def create_user(self, username: str, tg_id: int, expire_at: datetime,
-                          short_uuid: str | None = None) -> dict:
+                          short_uuid: str | None = None, device_limit: int | None = None) -> dict:
         """short_uuid — вернуть пользователю прежнюю ссылку-подписку (если его удаляли из панели)."""
         body: dict = {
             "username": username,
             "expireAt": _iso(expire_at),
             "telegramId": tg_id,
-            "hwidDeviceLimit": settings.device_limit,
+            "hwidDeviceLimit": device_limit or settings.device_limit,
             "trafficLimitBytes": settings.traffic_limit_gb * 1024**3,
             "trafficLimitStrategy": "MONTH" if settings.traffic_limit_gb else "NO_RESET",
             "description": "created by bot",
@@ -102,13 +102,15 @@ class Remnawave:
             raise PanelError("update_user: user not found")
         return user
 
-    async def add_days(self, username: str, tg_id: int, days: int, short_uuid: str | None = None) -> dict:
+    async def add_days(self, username: str, tg_id: int, days: int, short_uuid: str | None = None,
+                       set_limit: int | None = None) -> dict:
         """Создаёт пользователя или продлевает от max(сейчас, текущий срок).
         short_uuid — если пользователя в панели нет (удалили), создаём его с прежней ссылкой."""
         now = datetime.now(timezone.utc)
         user = await self.get_user(username)
         if user is None:
-            return await self.create_user(username, tg_id, now + timedelta(days=days), short_uuid=short_uuid)
+            return await self.create_user(username, tg_id, now + timedelta(days=days), short_uuid=short_uuid,
+                                          device_limit=set_limit)
         current = parse_dt(user["expireAt"])
         new_expire = max(now, current) + timedelta(days=days)
         # status не передаём: панель сама переводит EXPIRED -> ACTIVE при новом expireAt,
@@ -116,7 +118,10 @@ class Remnawave:
         # Лимит устройств поднимаем до стандартного, но не урезаем, если админ выдал больше.
         fields = {"expireAt": _iso(new_expire)}
         current_limit = user.get("hwidDeviceLimit")
-        if current_limit is None or current_limit < settings.device_limit:
+        if set_limit is not None:  # смена тарифа: семейный ↔ обычный
+            if current_limit != set_limit:
+                fields["hwidDeviceLimit"] = set_limit
+        elif current_limit is None or current_limit < settings.device_limit:
             fields["hwidDeviceLimit"] = settings.device_limit
         return await self.update_user(username, **fields)
 

@@ -10,18 +10,25 @@ from aiogram.types import CallbackQuery, LabeledPrice, Message, PreCheckoutQuery
 from .. import keyboards as kb, promo as promos, texts, ui
 from ..config import settings
 from ..emoji import e
-from ..db import Payment, Session
+from ..db import Payment, Session, User
 from ..services import check_payment, create_card_payment, create_crypto_payment, record_stars_payment
 
 router = Router()
 log = logging.getLogger(__name__)
 
 
-@router.callback_query(F.data == "buy")
+@router.callback_query(F.data.in_({"buy", "buy_family", "buy_regular"}))
 async def buy(cb: CallbackQuery, state: FSMContext):
+    """Тарифы. «buy» открывает семейные тем, у кого сейчас семейный тариф."""
     await state.clear()
     promo = await promos.current(cb.from_user.id)
-    await ui.show(cb, texts.tariffs(promo), reply_markup=kb.plans(promo), photo="tariffs")
+    if cb.data == "buy":
+        async with Session() as s:
+            user = await s.get(User, cb.from_user.id)
+        family = bool(user and user.family) and bool(settings.family_plan_list)
+    else:
+        family = cb.data == "buy_family"
+    await ui.show(cb, texts.tariffs(promo, family), reply_markup=kb.plans(promo, family), photo="tariffs")
     await cb.answer()
 
 
