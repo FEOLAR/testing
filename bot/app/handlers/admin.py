@@ -14,7 +14,7 @@ from ..config import settings
 from ..db import Payment, Session, User
 from ..remnawave import PanelError, panel
 from ..services import (RevokeError, admin_give, collect_stats, reconcile_stars, refresh_from_panel,
-                        revoke_link, safe_send, traffic_top)
+                        restore_deleted, revoke_link, safe_send, traffic_top)
 from ..texts import fmt_date
 
 router = Router()
@@ -31,6 +31,7 @@ HELP = (
     "/give &lt;tg_id&gt; &lt;дни&gt; — выдать/продлить подписку\n"
     "/ban &lt;tg_id&gt; · /unban &lt;tg_id&gt; — отключить/включить VPN\n"
     "/revoke &lt;tg_id&gt; — заменить пользователю ссылку-подписку (старая перестанет работать)\n"
+    "/restore — найти пользователей с активной подпиской, удалённых из панели; /restore apply — вернуть их с прежними ссылками\n"
     "/refund &lt;id оплаты&gt; — вернуть звёзды и забрать оплаченные дни\n"
     "/promo — промокоды; /promo_add КОД СКИДКА% [ЛИМИТ]; /promo_on|/promo_off КОД; /promo_limit КОД N; /promo_uses КОД\n"
     "/broadcast — ответь этой командой на сообщение, чтобы разослать его всем\n"
@@ -183,6 +184,24 @@ async def ban(message: Message, command: CommandObject):
     enable = command.command == "unban"
     await panel.set_enabled(f"tg_{tg_id}", enable)
     await message.answer("✅ Включён" if enable else "⛔ Отключён")
+
+
+@router.message(Command("restore"))
+async def restore_cmd(message: Message, command: CommandObject):
+    apply = (command.args or "").strip().lower() == "apply"
+    note = await message.answer("⏳ Проверяю пользователей в панели…")
+    r = await restore_deleted(apply)
+    lines = [f"Активных подписок в боте: {r['checked']}",
+             f"Нет в панели: {r['missing']}" + (f" (у {r['no_link']} нет сохранённой ссылки — получат новую)" if r['no_link'] else "")]
+    if apply:
+        lines.append(f"✅ Возвращено: {r['restored']}")
+        if r["new_link"]:
+            lines.append(f"⚠️ С новой ссылкой (прежнюю панель не приняла): {r['new_link']}")
+    elif r["missing"]:
+        lines.append("\nЧтобы вернуть их с прежними ссылками и сроком: /restore apply")
+    if r["failed"]:
+        lines.append(f"❌ Ошибки: {len(r['failed'])} — " + ", ".join(map(str, r["failed"][:20])))
+    await note.edit_text("\n".join(lines))
 
 
 @router.message(Command("revoke"))

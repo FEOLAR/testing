@@ -8,7 +8,7 @@ from sqlalchemy import select, update
 
 from .config import settings
 from .db import Payment, Session, User, utcnow
-from .remnawave import panel, parse_dt
+from .remnawave import panel, parse_dt, short_uuid_from_url
 from . import promo as promos, texts
 from .emoji import e
 
@@ -42,7 +42,8 @@ async def grant_days(tg_id: int, days: int) -> User:
     """Добавить дни в панели и обновить кэш в БД."""
     async with Session() as s:
         user = await s.get(User, tg_id)
-        pu = await panel.add_days(user.panel_username, tg_id, days)
+        pu = await panel.add_days(user.panel_username, tg_id, days,
+                                  short_uuid=short_uuid_from_url(user.sub_url))
         user.sub_url = pu.get("subscriptionUrl")
         user.expire_at = parse_dt(pu["expireAt"])
         # стадии, которые уже наступили к моменту выдачи (например, /give 1), не присылаем
@@ -149,6 +150,48 @@ async def refresh_from_panel(user: User) -> User:
     # реальный лимит устройств из панели (админ мог увеличить) — не хранится в БД, только для показа
     db_user.device_limit = (pu or {}).get("hwidDeviceLimit") or settings.device_limit
     return db_user
+
+
+async def restore_deleted(apply: bool) -> dict:
+    """Вернуть в панель пользователей с активной подпиской, которых удалили из панели,
+    с прежними ссылками (shortUuid из сохранённой ссылки) и прежним сроком.
+    apply=False — только посчитать. Истёкших не трогаем: при продлении бот сам создаст их
+    с прежней ссылкой (grant_days)."""
+    import asyncio
+    res = {"checked": 0, "missing": 0, "restored": 0, "new_link": 0, "failed": [], "no_link": 0}
+    async with Session() as s:
+        users = (await s.scalars(select(User).where(User.expire_at > utcnow()))).all()
+    for u in users:
+        res["checked"] += 1
+        try:
+            if await panel.get_user(u.panel_username) is not None:
+                continue
+        except Exception:
+            log.exception("restore: get_user %s", u.tg_id)
+            res["failed"].append(u.tg_id)
+            continue
+        res["missing"] += 1
+        su = short_uuid_from_url(u.sub_url)
+        if not su:
+            res["no_link"] += 1
+        if not apply:
+            continue
+        try:
+            pu = await panel.create_user(u.panel_username, u.tg_id, u.expire_at, short_uuid=su)
+        except Exception:
+            log.exception("restore: create %s", u.tg_id)
+            res["failed"].append(u.tg_id)
+            continue
+        res["restored"] += 1
+        new_url = pu.get("subscriptionUrl")
+        if su and short_uuid_from_url(new_url) != su:
+            res["new_link"] += 1
+        async with Session() as s:
+            db_user = await s.get(User, u.tg_id)
+            db_user.sub_url = new_url or db_user.sub_url
+            await s.commit()
+        await asyncio.sleep(0.05)
+    return res
 
 
 class RevokeError(Exception):

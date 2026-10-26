@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -25,6 +26,14 @@ def _iso(dt: datetime) -> str:
 
 def parse_dt(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def short_uuid_from_url(url: str | None) -> str | None:
+    """shortUuid — последний кусок ссылки-подписки (…/api/sub/<shortUuid>)."""
+    if not url:
+        return None
+    tail = url.split("?", 1)[0].split("#", 1)[0].rstrip("/").rsplit("/", 1)[-1]
+    return tail if re.fullmatch(r"[A-Za-z0-9_-]{6,64}", tail) else None
 
 
 class Remnawave:
@@ -56,7 +65,9 @@ class Remnawave:
     async def get_user(self, username: str) -> dict | None:
         return await self._req("GET", f"/api/users/by-username/{username}")
 
-    async def create_user(self, username: str, tg_id: int, expire_at: datetime) -> dict:
+    async def create_user(self, username: str, tg_id: int, expire_at: datetime,
+                          short_uuid: str | None = None) -> dict:
+        """short_uuid — вернуть пользователю прежнюю ссылку-подписку (если его удаляли из панели)."""
         body: dict = {
             "username": username,
             "expireAt": _iso(expire_at),
@@ -70,7 +81,17 @@ class Remnawave:
             body["activeInternalSquads"] = settings.squads
         else:
             body["activeInternalSquads"] = await self.all_squad_uuids()
-        user = await self._req("POST", "/api/users", json=body)
+        if short_uuid:
+            body["shortUuid"] = short_uuid
+        try:
+            user = await self._req("POST", "/api/users", json=body)
+        except PanelError:
+            if not short_uuid:
+                raise
+            # прежняя ссылка занята или не принята панелью — создаём с новой, чтобы не сорвать выдачу
+            log.warning("create_user %s: shortUuid %s rejected, creating with a new link", username, short_uuid)
+            body.pop("shortUuid")
+            user = await self._req("POST", "/api/users", json=body)
         if not user:
             raise PanelError("create_user: empty response")
         return user
@@ -81,12 +102,13 @@ class Remnawave:
             raise PanelError("update_user: user not found")
         return user
 
-    async def add_days(self, username: str, tg_id: int, days: int) -> dict:
-        """Создаёт пользователя или продлевает от max(сейчас, текущий срок)."""
+    async def add_days(self, username: str, tg_id: int, days: int, short_uuid: str | None = None) -> dict:
+        """Создаёт пользователя или продлевает от max(сейчас, текущий срок).
+        short_uuid — если пользователя в панели нет (удалили), создаём его с прежней ссылкой."""
         now = datetime.now(timezone.utc)
         user = await self.get_user(username)
         if user is None:
-            return await self.create_user(username, tg_id, now + timedelta(days=days))
+            return await self.create_user(username, tg_id, now + timedelta(days=days), short_uuid=short_uuid)
         current = parse_dt(user["expireAt"])
         new_expire = max(now, current) + timedelta(days=days)
         # status не передаём: панель сама переводит EXPIRED -> ACTIVE при новом expireAt,
