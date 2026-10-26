@@ -131,8 +131,25 @@ def profile(active: bool) -> M:
     if active:
         rows.append([btn("book", "Инструкция", callback_data="howto")])
         rows.append([btn("refresh", "Сбросить устройства", callback_data="reset_hwid")])
+        rows.append([btn("lock", "Заменить ссылку", callback_data="revoke")])
     rows.append([btn("card", "Продлить", "success" if not active else None, callback_data="buy")])
     rows.append([_back()])
+    return M(inline_keyboard=rows)
+
+
+def revoke_confirm() -> M:
+    return M(inline_keyboard=[
+        [btn("lock", "Да, заменить ссылку", "danger", callback_data="revoke_do")],
+        [_back("profile", "Отмена")],
+    ])
+
+
+def revoke_done() -> M:
+    rows = []
+    if settings.miniapp_url:
+        rows.append([btn("app", "Открыть приложение", "primary", web_app=WebAppInfo(url=settings.miniapp_url))])
+    rows.append([btn("book", "Инструкция", callback_data="howto")])
+    rows.append([_back("profile", "К подписке")])
     return M(inline_keyboard=rows)
 
 

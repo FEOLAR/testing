@@ -13,7 +13,8 @@ from sqlalchemy import select
 from ..config import settings
 from ..db import Payment, Session, User
 from ..remnawave import PanelError, panel
-from ..services import admin_give, collect_stats, reconcile_stars, refresh_from_panel, safe_send, traffic_top
+from ..services import (RevokeError, admin_give, collect_stats, reconcile_stars, refresh_from_panel,
+                        revoke_link, safe_send, traffic_top)
 from ..texts import fmt_date
 
 router = Router()
@@ -29,6 +30,7 @@ HELP = (
     "/user &lt;tg_id&gt; — инфо о пользователе\n"
     "/give &lt;tg_id&gt; &lt;дни&gt; — выдать/продлить подписку\n"
     "/ban &lt;tg_id&gt; · /unban &lt;tg_id&gt; — отключить/включить VPN\n"
+    "/revoke &lt;tg_id&gt; — заменить пользователю ссылку-подписку (старая перестанет работать)\n"
     "/refund &lt;id оплаты&gt; — вернуть звёзды и забрать оплаченные дни\n"
     "/promo — промокоды; /promo_add КОД СКИДКА% [ЛИМИТ]; /promo_on|/promo_off КОД; /promo_limit КОД N; /promo_uses КОД\n"
     "/broadcast — ответь этой командой на сообщение, чтобы разослать его всем\n"
@@ -181,6 +183,19 @@ async def ban(message: Message, command: CommandObject):
     enable = command.command == "unban"
     await panel.set_enabled(f"tg_{tg_id}", enable)
     await message.answer("✅ Включён" if enable else "⛔ Отключён")
+
+
+@router.message(Command("revoke"))
+async def revoke_cmd(message: Message, command: CommandObject):
+    tg_id = _parse_id(command)
+    if not tg_id:
+        return await message.answer("Формат: /revoke 123456789")
+    try:
+        user = await revoke_link(tg_id, by_admin=True)
+    except RevokeError as err:
+        return await message.answer(f"⚠️ {err}")
+    await message.answer(f"✅ Ссылка заменена. Новая:\n<code>{user.sub_url}</code>\n"
+                         "Пользователю нужно удалить старую подписку в Happ и добавить новую.")
 
 
 @router.message(Command("refund"))

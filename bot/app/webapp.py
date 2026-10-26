@@ -21,7 +21,7 @@ from .keyboards import support_url
 from . import promo as promos
 from .db import Payment, Session, User
 from .remnawave import panel, parse_dt
-from .services import (activate_trial, admin_give, apply_card_status, check_payment, collect_stats,
+from .services import (RevokeError, revoke_link, activate_trial, admin_give, apply_card_status, check_payment, collect_stats,
                        create_card_payment, create_crypto_payment, get_or_create_user, refresh_from_panel)
 
 log = logging.getLogger(__name__)
@@ -154,6 +154,7 @@ async def me(request: web.Request) -> web.Response:
         "card_enabled": settings.card_enabled,
         "card_title": settings.platega_title,
         "happ_ios_ru": settings.happ_ios_ru_url,
+        "revoke_resets_devices": settings.revoke_reset_devices,
         "referral": await referral_info(bot_username, tg.id) if settings.referral_bonus_days > 0 else None,
     })
 
@@ -253,6 +254,15 @@ async def device_delete(request: web.Request) -> web.Response:
     else:
         return err("Не указано устройство")
     return await devices(request)
+
+
+async def sub_revoke(request: web.Request) -> web.Response:
+    user = await current_user(request)
+    try:
+        user = await revoke_link(user.tg_id)
+    except RevokeError as e:
+        return err(str(e))
+    return web.json_response({"sub_url": user.sub_url})
 
 
 # ---------- админка ----------
@@ -568,6 +578,7 @@ def build_app(bot: Bot, bot_username: str) -> web.Application:
     r.add_get(f"{PREFIX}/api/admin/promos/{{pid:\\d+}}/uses", admin_promo_uses)
     r.add_get(f"{PREFIX}/api/devices", devices)
     r.add_post(f"{PREFIX}/api/devices/delete", device_delete)
+    r.add_post(f"{PREFIX}/api/sub/revoke", sub_revoke)
     r.add_get(f"{PREFIX}/api/admin/stats", admin_stats)
     r.add_get(f"{PREFIX}/api/admin/user", admin_find)
     r.add_get(f"{PREFIX}/api/admin/payments", admin_recent)

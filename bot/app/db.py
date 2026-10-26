@@ -41,6 +41,8 @@ class User(Base):
     # Отзыв: когда оставил последний (None — ещё не оставлял) и когда последний раз напоминали
     review_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     review_reminded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Когда пользователь последний раз сам заменил ссылку-подписку (защита от частых нажатий)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -107,6 +109,7 @@ MIGRATIONS = [
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS review_reminded_at TIMESTAMPTZ",
     # хосты, которые бот спрятал из подписки из-за упавшей ноды (чтобы вернуть только их)
     "CREATE TABLE IF NOT EXISTS hidden_hosts (uuid VARCHAR(64) PRIMARY KEY, hidden_at TIMESTAMPTZ NOT NULL DEFAULT now())",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ",
 ]
 
 

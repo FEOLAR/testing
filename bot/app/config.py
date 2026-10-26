@@ -89,6 +89,9 @@ class Settings(BaseSettings):
 
     plans: str = "30:199:150,90:549:400,180:999:750,365:1790:1350"
     trial_days: int = 3
+    # «Заменить ссылку»: не чаще раза в N минут на пользователя; сбрасывать ли заодно устройства
+    revoke_cooldown_min: int = 10
+    revoke_reset_devices: bool = True
     referral_bonus_days: int = 7
 
     # Platega — оплата картами и СБП. Пусто — способ не показывается.

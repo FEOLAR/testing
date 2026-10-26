@@ -139,6 +139,15 @@ class Remnawave:
         await self._req("POST", "/api/hwid/devices/delete", json={**self._user_key(user), "hwid": hwid})
         return True
 
+    async def revoke_subscription(self, username: str) -> dict | None:
+        """Новая ссылка-подписка: панель меняет shortUuid и ключи пользователя (VLESS UUID и пароли),
+        поэтому старая ссылка и уже скачанные по ней конфиги перестают работать. None — пользователя нет."""
+        user = await self.get_user(username)
+        if not user:
+            return None
+        key = user["id"] if isinstance(user.get("id"), int) else user["uuid"]  # 3.x — id, 2.x — uuid
+        return await self._req("POST", f"/api/users/{key}/actions/revoke", json={})
+
     async def set_enabled(self, username: str, enabled: bool) -> dict:
         return await self.update_user(username, status="ACTIVE" if enabled else "DISABLED")
 

@@ -151,6 +151,48 @@ async def refresh_from_panel(user: User) -> User:
     return db_user
 
 
+class RevokeError(Exception):
+    """Понятная пользователю причина, почему ссылку заменить нельзя."""
+
+
+async def revoke_link(tg_id: int, by_admin: bool = False) -> User:
+    """Выдать новую ссылку-подписку: старая ссылка и ключи перестают работать.
+    Срок подписки и лимит устройств не меняются. Устройства сбрасываются (REVOKE_RESET_DEVICES),
+    чтобы чужие устройства, подключённые по утёкшей ссылке, не занимали лимит."""
+    async with Session() as s:
+        user = await s.get(User, tg_id)
+        if not user or not user.expire_at or user.expire_at <= utcnow():
+            raise RevokeError("Заменить ссылку можно при активной подписке.")
+        wait = settings.revoke_cooldown_min * 60
+        if not by_admin and user.revoked_at and (utcnow() - user.revoked_at).total_seconds() < wait:
+            left = max(1, int((wait - (utcnow() - user.revoked_at).total_seconds()) // 60) + 1)
+            raise RevokeError(f"Ссылку недавно меняли. Повторить можно через {left} мин.")
+        # отметку ставим до запроса в панель: двойное нажатие не выпустит две ссылки подряд
+        prev, user.revoked_at = user.revoked_at, utcnow()
+        await s.commit()
+    try:
+        pu = await panel.revoke_subscription(f"tg_{tg_id}")
+        if not pu:
+            raise RevokeError("Подписка не найдена. Напиши в поддержку.")
+    except Exception:
+        async with Session() as s:  # не получилось — не заставляем ждать перед повтором
+            u = await s.get(User, tg_id)
+            u.revoked_at = prev
+            await s.commit()
+        raise
+    if settings.revoke_reset_devices:
+        try:
+            await panel.reset_devices(f"tg_{tg_id}")
+        except Exception:
+            log.exception("revoke: reset devices failed")
+    async with Session() as s:
+        user = await s.get(User, tg_id)
+        user.sub_url = pu.get("subscriptionUrl") or (await panel.get_user(f"tg_{tg_id}") or {}).get("subscriptionUrl")
+        await s.commit()
+    log.info("subscription link revoked: tg_id=%s by_admin=%s", tg_id, by_admin)
+    return user
+
+
 async def safe_send(bot: Bot, chat_id: int, text: str, **kw) -> bool:
     try:
         await bot.send_message(chat_id, text, **kw)

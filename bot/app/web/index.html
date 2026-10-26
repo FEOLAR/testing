@@ -632,8 +632,24 @@ function renderDevices() {
       <div class="muted small">${esc([d.platform, d.os_version].filter(Boolean).join(' ') || '—')} · с ${fmtDate(d.created_at)}</div></div>
       <button class="icon-btn" data-del="${i}" title="Удалить">${ic('trash',17,'#f87171')}</button></div>`).join('')}</div>`;
   }
-  html += `<p class="muted small" style="margin:0 4px">Удалённое устройство сможет подключиться снова, если на нём осталась подписка. Чтобы отключить чужое устройство — удали его и больше не передавай ссылку.</p>`;
+  html += `<p class="muted small" style="margin:0 4px">Удалённое устройство сможет подключиться снова, если на нём осталась подписка. Чтобы отключить чужое устройство навсегда — замени ссылку ниже.</p>`;
+  const st = S.me.sub.status;
+  if (st === 'ACTIVE') html += `<div class="card" style="margin-top:14px"><div style="font-weight:700;display:flex;gap:8px;align-items:center">${ic('shield',18)} Ссылка попала к чужим?</div>
+      <p class="muted small" style="margin:8px 0 12px">Замени ссылку-подписку: старая и всё, что по ней настроено, перестанут работать${S.me.revoke_resets_devices ? ', а устройства сбросятся' : ''}. Срок подписки не изменится.</p>
+      <button class="btn danger" id="revokeBtn">${ic('key',17)} Заменить ссылку</button></div>`;
   view.innerHTML = html;
+  const rv = $('#revokeBtn'); if (rv) rv.onclick = async () => {
+    if (!await confirmBox('Заменить ссылку-подписку? Старая перестанет работать на всех устройствах — на своих добавишь новую ссылку заново.')) return;
+    rv.disabled = true;
+    try {
+      const r = await api('sub/revoke', {});
+      S.me.sub.sub_url = r.sub_url; haptic('medium');
+      if (S.me.revoke_resets_devices) S.devices = [];
+      renderDevices();
+      await copy(r.sub_url, 'Новая ссылка скопирована');
+      if (tg && tg.showAlert) tg.showAlert('Ссылка заменена и скопирована. В Happ удали старую подписку и добавь новую — кнопкой «Добавить подписку» на главной или вставь ссылку.');
+    } catch (e) { toast(e.message); rv.disabled = false; }
+  };
   view.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
     const d = S.devices[+b.dataset.del];
     if (!await confirmBox(`Удалить «${d.model || d.platform || 'устройство'}»?`)) return;

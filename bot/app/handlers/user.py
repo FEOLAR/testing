@@ -14,7 +14,7 @@ from ..config import settings
 from ..emoji import e
 from ..db import Session, User
 from ..remnawave import panel
-from ..services import activate_trial, get_or_create_user, refresh_from_panel
+from ..services import RevokeError, activate_trial, get_or_create_user, refresh_from_panel, revoke_link
 from .engage import gated, send_gate
 
 router = Router()
@@ -162,3 +162,26 @@ async def reset_hwid(cb: CallbackQuery):
         ok = False
     await cb.answer("Устройства сброшены. Подключись заново на нужных устройствах." if ok
                     else "Не получилось, попробуй позже.", show_alert=True)
+
+
+@router.callback_query(F.data == "revoke")
+async def revoke(cb: CallbackQuery):
+    user = await load_user(cb.from_user)
+    if not is_active(user):
+        return await cb.answer("Заменить ссылку можно при активной подписке.", show_alert=True)
+    await ui.show(cb, texts.revoke_ask(), reply_markup=kb.revoke_confirm(), photo="profile")
+    await cb.answer()
+
+
+@router.callback_query(F.data == "revoke_do")
+async def revoke_do(cb: CallbackQuery):
+    try:
+        user = await revoke_link(cb.from_user.id)
+    except RevokeError as err:
+        return await cb.answer(str(err), show_alert=True)
+    except Exception:
+        log.exception("revoke failed")
+        return await cb.answer("Не получилось заменить ссылку, попробуй позже или напиши в поддержку.",
+                               show_alert=True)
+    await ui.show(cb, texts.revoke_done(user), reply_markup=kb.revoke_done(), photo="profile")
+    await cb.answer("Готово, ссылка заменена")

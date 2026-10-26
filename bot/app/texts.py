@@ -137,6 +137,32 @@ def profile(user, active: bool) -> str:
     return "\n".join(lines)
 
 
+def revoke_ask() -> str:
+    devices = ("\n• все подключённые устройства сбросятся — на своих подключишь заново"
+               if settings.revoke_reset_devices else "")
+    return (
+        f"{title('lock', 'Новая ссылка-подписка')}\n\n"
+        "Если ссылка попала к чужим людям — замени её. Что произойдёт:\n"
+        "<blockquote>• старая ссылка и всё, что по ней настроено, перестанут работать"
+        f"{devices}\n"
+        "• срок подписки не изменится</blockquote>\n"
+        "<i>После замены удали старую подписку в Happ и добавь новую ссылку на своих устройствах.</i>"
+    )
+
+
+def revoke_done(user) -> str:
+    return (
+        f"{title('ok', 'Ссылка заменена')}\n\n"
+        "Старая ссылка больше не работает.\n\n"
+        f"{e('link')} Новая ссылка-подписка\n"
+        f'<pre><code class="language-копировать">{escape(user.sub_url or "")}</code></pre>\n\n'
+        "<blockquote><b>Что сделать на своих устройствах:</b>\n"
+        "1. В Happ удали старую подписку\n"
+        "2. Добавь новую — кнопкой «Открыть приложение» или вставь ссылку выше</blockquote>\n"
+        "<i>Никому не пересылай ссылку — по ней подключаются к твоей подписке.</i>"
+    )
+
+
 def tariffs(promo=None) -> str:
     from .promo import price
     head = [title("card", "Тарифы") + "\n", f"<i>Безлимитный трафик, подключение до {settings.device_limit} устройств</i>\n"]
