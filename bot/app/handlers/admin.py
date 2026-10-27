@@ -24,6 +24,10 @@ log = logging.getLogger(__name__)
 HELP = (
     "🛠 <b>Админка</b>\n\n"
     "/stats — статистика\n"
+    "/link метка — ссылка для рекламы (например /link techno), по ней видно, сколько пришло и купило\n"
+    "/sources [дни] — откуда пришли люди: метки ссылок, промокоды, рефералка → пробники, покупки, выручка\n"
+    "/promo_stats — промокоды: сколько ввели, сколько оплат и на какую сумму\n"
+    "/refs — топ пригласивших друзей\n"
     "/nodes — состояние нод и автораспределение по странам\n"
     "/wlcheck IP1 IP2 … — ссылка для клиента: проверить, какие IP проходят «белые списки» его оператора\n"
     "/top [дни] [кол-во] — кто больше всех тратит трафик (по умолчанию 30 дн., топ-20)\n"
@@ -68,6 +72,67 @@ async def stats(message: Message):
         f"Оплаты за 24ч: {fmt(st['day'])}\n"
         f"Оплаты за 30д: {fmt(st['month'])}"
     )
+
+
+def _money_text(rub: int, stars: int) -> str:
+    parts = [f"{rub} ₽"] if rub or not stars else []
+    if stars:
+        parts.append(f"{stars} ⭐")
+    return " + ".join(parts)
+
+
+@router.message(Command("link"))
+async def ad_link(message: Message, command: CommandObject, bot: Bot):
+    from .user import source_tag
+    tag = source_tag((command.args or "").strip())
+    if not tag:
+        return await message.answer("Формат: <code>/link метка</code> — латиница, цифры, _ и -, до 32 символов.\n"
+                                    "Например <code>/link tech_chan1</code>. Для каждого канала — своя метка.")
+    me = await bot.get_me()
+    await message.answer(f"🔗 Ссылка для метки <b>{tag}</b>:\n<code>https://t.me/{me.username}?start=src_{tag}</code>\n\n"
+                         "Засчитываются только новые пользователи. Результат — /sources")
+
+
+@router.message(Command("sources"))
+async def sources(message: Message, command: CommandObject):
+    from ..services import source_stats
+    arg = (command.args or "").strip()
+    days = int(arg) if arg.isdigit() and int(arg) > 0 else None
+    rows = await source_stats(days)
+    if not rows:
+        return await message.answer("Пока пусто.")
+    lines = []
+    for r in rows[:40]:
+        name = "без метки" if r["source"] == "—" else r["source"]
+        conv = f"{round(100 * r['payers'] / r['users'])}%" if r["users"] else "—"
+        lines.append(f"<b>{escape(name)}</b>: пришло {r['users']} · пробник {r['trial']} · купили {r['payers']} ({conv})"
+                     f" · оплат {r['payments']} · {_money_text(r['rub'], r['stars'])} · активны {r['active']}")
+    period = f"за {days} дн." if days else "за всё время"
+    await message.answer(f"📈 <b>Источники</b> ({period}, по дате прихода)\n\n" + "\n".join(lines) +
+                         "\n\nМетки: ссылки /link, <i>promo:КОД</i> — ввёл промокод до первой покупки, <i>ref</i> — от друга.")
+
+
+@router.message(Command("promo_stats"))
+async def promo_stats(message: Message):
+    from ..services import promo_revenue
+    rows = await promo_revenue()
+    if not rows:
+        return await message.answer("Промокодов пока нет.")
+    lines = [f"<code>{escape(r['code'])}</code>: ввели новые {r['entered']} · оплат {r['payments']} "
+             f"({r['payers']} чел.) · {_money_text(r['rub'], r['stars'])}" for r in rows]
+    await message.answer("🎟 <b>Промокоды: отдача</b>\n\n" + "\n".join(lines) +
+                         "\n\n«Ввели новые» — ввели код до первой покупки (то есть пришли по рекламе с этим кодом).")
+
+
+@router.message(Command("refs"))
+async def refs(message: Message):
+    from ..services import referrer_stats
+    rows = await referrer_stats()
+    if not rows:
+        return await message.answer("По реф-ссылкам пока никто не пришёл.")
+    lines = [f"{escape(r['name'])}: привёл {r['invited']} · купили {r['payers']} · {_money_text(r['rub'], r['stars'])}"
+             for r in rows]
+    await message.answer("👥 <b>Топ пригласивших</b>\n\n" + "\n".join(lines))
 
 
 @router.message(Command("wlcheck"))

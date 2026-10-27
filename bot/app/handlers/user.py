@@ -30,14 +30,24 @@ async def load_user(tg) -> User:
     return user
 
 
+def source_tag(arg: str) -> str | None:
+    """?start=src_techno → "techno". Другие параметры (кроме ref_) тоже считаем меткой, если они «чистые»."""
+    import re
+    tag = arg[4:] if arg.startswith("src_") else arg
+    tag = tag.lower()[:32]
+    return tag if re.fullmatch(r"[a-z0-9_-]{1,32}", tag) else None
+
+
 @router.message(CommandStart())
 async def start(message: Message, command: CommandObject, state: FSMContext):
     await state.clear()
-    ref = None
+    ref, source = None, None
     if command.args and command.args.startswith("ref_") and command.args[4:].isdigit():
         ref = int(command.args[4:])
+    elif command.args:
+        source = source_tag(command.args)
     user, _ = await get_or_create_user(message.from_user.id, message.from_user.username,
-                                       message.from_user.first_name, referrer_id=ref)
+                                       message.from_user.first_name, referrer_id=ref, source=source)
     if gated(user):  # КПП: сначала подписка на канал, меню — после проверки
         return await send_gate(message, message.from_user.first_name)
     await message.answer(texts.menu_hint(), reply_markup=kb.reply_menu())  # постоянная кнопка «Меню» внизу

@@ -16,7 +16,7 @@ log = logging.getLogger(__name__)
 
 
 async def get_or_create_user(tg_id: int, username: str | None, first_name: str | None,
-                             referrer_id: int | None = None) -> tuple[User, bool]:
+                             referrer_id: int | None = None, source: str | None = None) -> tuple[User, bool]:
     async with Session() as s:
         user = await s.get(User, tg_id)
         if user:
@@ -32,7 +32,10 @@ async def get_or_create_user(tg_id: int, username: str | None, first_name: str |
             return user, False
         if referrer_id == tg_id or (referrer_id and not await s.get(User, referrer_id)):
             referrer_id = None
-        user = User(tg_id=tg_id, username=username, first_name=first_name, referrer_id=referrer_id)
+        if not source and referrer_id:
+            source = "ref"
+        user = User(tg_id=tg_id, username=username, first_name=first_name, referrer_id=referrer_id,
+                    source=source)
         s.add(user)
         await s.commit()
         return user, True
@@ -477,6 +480,96 @@ async def collect_stats() -> dict:
             )
             out[key] = {m: {"count": c, "sum": sum(int(a.split()[0]) for a in amts)} for m, c, amts in rows}
     return out
+
+
+def _money(amounts) -> tuple[int, int]:
+    """Список строк "199 RUB" / "150 XTR" → (рубли, звёзды)."""
+    rub = stars = 0
+    for a in amounts or []:
+        parts = (a or "").split()
+        if not parts or not parts[0].isdigit():
+            continue
+        if len(parts) > 1 and parts[1] == "XTR":
+            stars += int(parts[0])
+        else:
+            rub += int(parts[0])
+    return rub, stars
+
+
+async def source_stats(days: int | None = None) -> list[dict]:
+    """По каждому источнику: пришло, взяли пробник, активны сейчас, купили (людей / оплат), выручка.
+    days — учитывать только пользователей, пришедших за последние N дней."""
+    from sqlalchemy import Integer, case, cast, func
+    now = utcnow()
+    num = case((Payment.amount.op("~")(r"^\d+( |$)"),
+                cast(func.split_part(Payment.amount, " ", 1), Integer)), else_=0)
+    is_star = func.split_part(Payment.amount, " ", 2) == "XTR"
+    paid = (select(Payment.tg_id, func.count().label("n"),
+                   func.sum(case((is_star, 0), else_=num)).label("rub"),
+                   func.sum(case((is_star, num), else_=0)).label("stars"))
+            .where(Payment.status == "paid", Payment.method != "admin")
+            .group_by(Payment.tg_id).subquery())
+    src = func.coalesce(User.source, "—")
+    q = (select(src, func.count(),
+                func.sum(case((User.trial_used.is_(True), 1), else_=0)),
+                func.sum(case((User.expire_at > now, 1), else_=0)),
+                func.count(paid.c.tg_id), func.coalesce(func.sum(paid.c.n), 0),
+                func.coalesce(func.sum(paid.c.rub), 0), func.coalesce(func.sum(paid.c.stars), 0))
+         .select_from(User).outerjoin(paid, paid.c.tg_id == User.tg_id).group_by(src))
+    if days:
+        q = q.where(User.created_at > now - timedelta(days=days))
+    out = []
+    async with Session() as s:
+        for source, users, trial, active, payers, payments, rub, stars in await s.execute(q):
+            out.append(dict(source=source, users=users, trial=int(trial or 0), active=int(active or 0),
+                            payers=payers, payments=int(payments), rub=int(rub), stars=int(stars)))
+    out.sort(key=lambda r: (r["rub"] + r["stars"], r["users"]), reverse=True)
+    return out
+
+
+async def promo_revenue() -> list[dict]:
+    """Общие промокоды: сколько ввели (как источник), сколько оплат и выручка по скидке."""
+    from sqlalchemy import func
+    from .db import PromoCode
+    async with Session() as s:
+        rows = await s.execute(
+            select(PromoCode.code, func.count(Payment.id), func.count(func.distinct(Payment.tg_id)),
+                   func.array_agg(Payment.amount))
+            .outerjoin(Payment, (Payment.promo_id == PromoCode.id) & (Payment.status == "paid"))
+            .where(PromoCode.owner_tg_id.is_(None)).group_by(PromoCode.code))
+        entered = dict((await s.execute(
+            select(User.source, func.count()).where(User.source.like("promo:%")).group_by(User.source))).all())
+    out = []
+    for code, n, payers, amts in rows:
+        rub, stars = _money([a for a in amts if a])
+        out.append(dict(code=code, entered=entered.get(f"promo:{code}", 0), payments=n, payers=payers,
+                        rub=rub, stars=stars))
+    out.sort(key=lambda r: (r["rub"] + r["stars"], r["entered"]), reverse=True)
+    return out
+
+
+async def referrer_stats(limit: int = 15) -> list[dict]:
+    """Топ пригласивших: сколько привели, сколько из них купили, сколько те заплатили."""
+    from sqlalchemy import func
+    async with Session() as s:
+        rows = await s.execute(
+            select(User.referrer_id, func.count(func.distinct(User.tg_id)),
+                   func.count(func.distinct(Payment.tg_id)), func.array_agg(Payment.amount))
+            .outerjoin(Payment, (Payment.tg_id == User.tg_id) & (Payment.status == "paid")
+                       & (Payment.method != "admin"))
+            .where(User.referrer_id.is_not(None)).group_by(User.referrer_id))
+        data = []
+        for ref_id, invited, payers, amts in rows:
+            rub, stars = _money([a for a in amts if a])
+            data.append(dict(tg_id=ref_id, invited=invited, payers=payers, rub=rub, stars=stars))
+        data.sort(key=lambda r: (r["payers"], r["invited"]), reverse=True)
+        data = data[:limit]
+        names = {u.tg_id: u for u in (await s.execute(
+            select(User).where(User.tg_id.in_([r["tg_id"] for r in data])))).scalars()} if data else {}
+    for r in data:
+        u = names.get(r["tg_id"])
+        r["name"] = ("@" + u.username) if u and u.username else (u.first_name if u and u.first_name else str(r["tg_id"]))
+    return data
 
 
 async def traffic_top(days: int, limit: int) -> dict:

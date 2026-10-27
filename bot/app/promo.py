@@ -89,6 +89,12 @@ async def apply(tg_id: int, code: str) -> tuple[PromoCode | None, str | None]:
         return None, error
     async with Session() as s:
         await s.execute(update(User).where(User.tg_id == tg_id).values(promo_id=promo.id))
+        if promo.owner_tg_id is None:  # общий код из рекламы — запоминаем как источник, если его ещё нет
+            paid = await s.scalar(select(Payment.id).where(
+                Payment.tg_id == tg_id, Payment.status.in_(USED), Payment.method != "admin").limit(1))
+            if not paid:
+                await s.execute(update(User).where(User.tg_id == tg_id, User.source.is_(None))
+                                .values(source=f"promo:{promo.code}"[:40]))
         await s.commit()
     return promo, None
 

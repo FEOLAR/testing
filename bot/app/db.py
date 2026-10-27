@@ -47,6 +47,8 @@ class User(Base):
     ref_trial_rewarded: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # Последняя покупка — семейный тариф (лимит FAMILY_DEVICE_LIMIT)
     family: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Откуда пришёл: метка из ссылки ?start=src_<метка>, "ref" (реф-ссылка) или "promo:<КОД>"
+    source: Mapped[str | None] = mapped_column(String(40), index=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -128,6 +130,8 @@ MIGRATIONS = [
     "CREATE INDEX IF NOT EXISTS ix_promo_codes_owner_tg_id ON promo_codes (owner_tg_id)",
     "CREATE TABLE IF NOT EXISTS outages (id SERIAL PRIMARY KEY, started_at TIMESTAMPTZ NOT NULL, "
     "ended_at TIMESTAMPTZ, compensated BOOLEAN NOT NULL DEFAULT FALSE)",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS source VARCHAR(40)",
+    "CREATE INDEX IF NOT EXISTS ix_users_source ON users (source)",
 ]
 
 
