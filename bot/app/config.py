@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     bot_token: str
     # Токен старого бота после переезда: он будет отвечать «мы переехали» (см. legacy.py). Пусто — выключено.
     legacy_bot_token: str = ""
+    # Бот-визитка без «VPN» в имени (для рекламы): перенаправляет в основного бота и канал (см. gateway.py)
+    gateway_bot_token: str = ""
+    gateway_source: str = "vizitka"   # метка в /sources для тех, кто пришёл через визитку без своей метки
     admin_ids: str = ""
     support_username: str = ""
     brand_name: str = "VPN"

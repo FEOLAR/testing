@@ -25,7 +25,7 @@ log = logging.getLogger(__name__)
 HELP = (
     "🛠 <b>Админка</b>\n\n"
     "/stats — статистика\n"
-    "/link метка — ссылка для рекламы (например /link techno), по ней видно, сколько пришло и купило\n"
+    "/link метка — ссылка для рекламы (и через бота-визитку, если задан GATEWAY_BOT_TOKEN) (например /link techno), по ней видно, сколько пришло и купило\n"
     "/sources [дни] — откуда пришли люди: метки ссылок, промокоды, рефералка → пробники, покупки, выручка\n"
     "/promo_stats — промокоды: сколько ввели, сколько оплат и на какую сумму\n"
     "/refs — топ пригласивших друзей\n"
@@ -137,9 +137,13 @@ async def ad_link(message: Message, command: CommandObject, bot: Bot):
     if not tag:
         return await message.answer("Формат: <code>/link метка</code> — латиница, цифры, _ и -, до 32 символов.\n"
                                     "Например <code>/link tech_chan1</code>. Для каждого канала — своя метка.")
+    from .. import gateway
     me = await bot.get_me()
-    await message.answer(f"🔗 Ссылка для метки <b>{tag}</b>:\n<code>https://t.me/{me.username}?start=src_{tag}</code>\n\n"
-                         "Засчитываются только новые пользователи. Результат — /sources")
+    text = f"🔗 Ссылка для метки <b>{tag}</b>:\n<code>https://t.me/{me.username}?start=src_{tag}</code>"
+    if gateway.USERNAME:
+        text += (f"\n\nЧерез бота-визитку (без «VPN» в имени — для рекламы):\n"
+                 f"<code>https://t.me/{gateway.USERNAME}?start=src_{tag}</code>")
+    await message.answer(text + "\n\nЗасчитываются только новые пользователи. Результат — /sources")
 
 
 @router.message(Command("sources"))

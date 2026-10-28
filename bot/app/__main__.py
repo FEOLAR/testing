@@ -83,6 +83,16 @@ async def main() -> None:
         legacy_dp = build_legacy_dispatcher((await bot.me()).username)
         polling.append(legacy_dp.start_polling(legacy_bot, handle_signals=False))
         log.info("legacy bot @%s redirects to the new one", (await legacy_bot.me()).username)
+    gateway_bot = None
+    if settings.gateway_bot_token:
+        from .gateway import build_gateway_dispatcher, setup_profile
+        gateway_bot = Bot(settings.gateway_bot_token)
+        gateway_dp = build_gateway_dispatcher((await bot.me()).username)
+        await setup_profile(gateway_bot)
+        polling.append(gateway_dp.start_polling(gateway_bot, handle_signals=False))
+        from . import gateway
+        gateway.USERNAME = (await gateway_bot.me()).username
+        log.info("gateway bot @%s redirects to the main one", gateway.USERNAME)
     try:
         await asyncio.gather(*polling)
     finally:
@@ -95,6 +105,8 @@ async def main() -> None:
         await bot.session.close()
         if legacy_bot:
             await legacy_bot.session.close()
+        if gateway_bot:
+            await gateway_bot.session.close()
 
 
 if __name__ == "__main__":
