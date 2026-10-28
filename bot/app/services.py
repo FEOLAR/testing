@@ -25,7 +25,7 @@ async def get_or_create_user(tg_id: int, username: str | None, first_name: str |
                 user.username, user.first_name = username, first_name
                 changed = True
             if user.is_blocked:
-                user.is_blocked = False
+                user.is_blocked, user.blocked_at = False, None
                 changed = True
             if changed:
                 await s.commit()
@@ -285,6 +285,33 @@ async def revoke_link(tg_id: int, by_admin: bool = False) -> User:
     return user
 
 
+def is_block_error(err: Exception) -> bool:
+    msg = str(err).lower()
+    return "blocked" in msg or "deactivated" in msg or "chat not found" in msg
+
+
+async def mark_blocked(tg_id: int, blocked: bool = True) -> None:
+    """Отметить, что пользователь заблокировал (или разблокировал) бота. Дату блокировки не сдвигаем."""
+    async with Session() as s:
+        q = update(User).where(User.tg_id == tg_id)
+        if blocked:
+            q = q.where(User.is_blocked.is_(False)).values(is_blocked=True, blocked_at=utcnow())
+        else:
+            q = q.values(is_blocked=False, blocked_at=None)
+        await s.execute(q)
+        await s.commit()
+
+
+async def blocked_users() -> list[User]:
+    """Кто заблокировал бота: сначала с активной подпиской, потом по дате блокировки (свежие сверху)."""
+    now = utcnow()
+    async with Session() as s:
+        users = list((await s.execute(select(User).where(User.is_blocked.is_(True)))).scalars())
+    far = now.replace(year=1970)
+    users.sort(key=lambda u: (bool(u.expire_at and u.expire_at > now), u.blocked_at or far), reverse=True)
+    return users
+
+
 async def safe_send(bot: Bot, chat_id: int, text: str, **kw) -> bool:
     try:
         await bot.send_message(chat_id, text, **kw)
@@ -292,9 +319,7 @@ async def safe_send(bot: Bot, chat_id: int, text: str, **kw) -> bool:
     except Exception as e:  # пользователь заблокировал бота и т.п.
         log.info("send to %s failed: %s", chat_id, e)
         if "blocked" in str(e).lower() or "deactivated" in str(e).lower():
-            async with Session() as s:
-                await s.execute(update(User).where(User.tg_id == chat_id).values(is_blocked=True))
-                await s.commit()
+            await mark_blocked(chat_id)
         return False
 
 

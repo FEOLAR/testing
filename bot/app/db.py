@@ -49,6 +49,8 @@ class User(Base):
     family: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # Откуда пришёл: метка из ссылки ?start=src_<метка>, "ref" (реф-ссылка) или "promo:<КОД>"
     source: Mapped[str | None] = mapped_column(String(40), index=True)
+    # Когда бот узнал, что пользователь его заблокировал
+    blocked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -132,6 +134,7 @@ MIGRATIONS = [
     "ended_at TIMESTAMPTZ, compensated BOOLEAN NOT NULL DEFAULT FALSE)",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS source VARCHAR(40)",
     "CREATE INDEX IF NOT EXISTS ix_users_source ON users (source)",
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_at TIMESTAMPTZ",
 ]
 
 

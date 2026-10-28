@@ -7,13 +7,14 @@ from html import escape
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramRetryAfter
 from aiogram.filters import Command, CommandObject
-from aiogram.types import FSInputFile, InputSticker, Message
+from aiogram.types import BufferedInputFile, FSInputFile, InputSticker, Message
 from sqlalchemy import func, select
 
 from ..config import settings
 from ..db import Payment, Session, User, utcnow
 from ..remnawave import PanelError, panel
-from ..services import (RevokeError, admin_give, collect_stats, reconcile_stars, refresh_from_panel,
+from ..texts import TZ as MSK
+from ..services import (is_block_error, mark_blocked, blocked_users, RevokeError, admin_give, collect_stats, reconcile_stars, refresh_from_panel,
                         restore_deleted, revoke_link, safe_send, traffic_top)
 from ..texts import fmt_date
 
@@ -28,6 +29,7 @@ HELP = (
     "/sources [дни] — откуда пришли люди: метки ссылок, промокоды, рефералка → пробники, покупки, выручка\n"
     "/promo_stats — промокоды: сколько ввели, сколько оплат и на какую сумму\n"
     "/refs — топ пригласивших друзей\n"
+    "/blocked — кто заблокировал бота (ID, @ник, подписка); полный список — файлом\n"
     "/nodes — состояние нод и автораспределение по странам\n"
     "/wlcheck IP1 IP2 … — ссылка для клиента: проверить, какие IP проходят «белые списки» его оператора\n"
     "/top [дни] [кол-во] — кто больше всех тратит трафик (по умолчанию 30 дн., топ-20)\n"
@@ -79,6 +81,40 @@ def _money_text(rub: int, stars: int) -> str:
     if stars:
         parts.append(f"{stars} ⭐")
     return " + ".join(parts)
+
+
+def _blocked_line(u, now) -> str:
+    who = f"@{u.username}" if u.username else escape(u.first_name or "без имени")
+    when = u.blocked_at.astimezone(MSK).strftime("%d.%m %H:%M") if u.blocked_at else "дата неизвестна"
+    sub = (f"подписка до {u.expire_at.astimezone(MSK).strftime('%d.%m')}" if u.expire_at and u.expire_at > now
+           else "без подписки")
+    return f"{who} · <code>{u.tg_id}</code> · {when} · {sub}"
+
+
+@router.message(Command("blocked"))
+async def blocked(message: Message):
+    from ..db import utcnow
+    users = await blocked_users()
+    if not users:
+        return await message.answer("Никто не заблокировал бота 🎉")
+    now = utcnow()
+    active = sum(1 for u in users if u.expire_at and u.expire_at > now)
+    head = (f"🚫 <b>Заблокировали бота: {len(users)}</b> (из них с активной подпиской: {active})\n"
+            "Сначала — с подпиской, дальше свежие сверху. Время — МСК.\n\n")
+    shown = users[:40]
+    text = head + "\n".join(_blocked_line(u, now) for u in shown)
+    if len(users) > len(shown):
+        text += f"\n\n…и ещё {len(users) - len(shown)} — полный список в файле."
+    await message.answer(text)
+    if len(users) > len(shown):
+        import re
+        rows = ["tg_id;username;имя;заблокировал (МСК);подписка до;источник"]
+        for u in users:
+            rows.append(";".join([
+                str(u.tg_id), ("@" + u.username) if u.username else "", re.sub(r"[;\n]", " ", u.first_name or ""),
+                u.blocked_at.astimezone(MSK).strftime("%Y-%m-%d %H:%M") if u.blocked_at else "",
+                u.expire_at.astimezone(MSK).strftime("%Y-%m-%d") if u.expire_at else "", u.source or ""]))
+        await message.answer_document(BufferedInputFile("\n".join(rows).encode("utf-8-sig"), "blocked.csv"))
 
 
 @router.message(Command("link"))
@@ -396,8 +432,10 @@ async def _run_broadcast(bot: Bot, admin_chat: int, src: Message, ids: list[int]
                 break
             except TelegramRetryAfter as e:
                 await asyncio.sleep(e.retry_after + 1)
-            except Exception:
+            except Exception as e:
                 fail += 1
+                if is_block_error(e):
+                    await mark_blocked(tg_id)
                 break
         await asyncio.sleep(0.05)  # ~20 сообщений/сек — ниже лимита Telegram
     await safe_send(bot, admin_chat, f"✅ Рассылка завершена: доставлено {ok}, ошибок {fail}")

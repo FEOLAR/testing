@@ -218,7 +218,7 @@ async def review_reminders(bot: Bot) -> None:
         async with Session() as s:
             values = {"review_reminded_at": now}
             if blocked:
-                values["is_blocked"] = True
+                values.update(is_blocked=True, blocked_at=now)
             await s.execute(update(User).where(User.tg_id == user.tg_id).values(**values))
             await s.commit()
         await asyncio.sleep(0.05)

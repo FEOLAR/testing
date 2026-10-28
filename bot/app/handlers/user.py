@@ -6,7 +6,8 @@ from datetime import datetime, timezone
 from aiogram import F, Router
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.filters import ChatMemberUpdatedFilter, KICKED, MEMBER
+from aiogram.types import CallbackQuery, ChatMemberUpdated, Message
 from sqlalchemy import func, select
 
 from .. import keyboards as kb, texts, ui
@@ -28,6 +29,21 @@ def is_active(user: User) -> bool:
 async def load_user(tg) -> User:
     user, _ = await get_or_create_user(tg.id, tg.username, tg.first_name)
     return user
+
+
+@router.my_chat_member(ChatMemberUpdatedFilter(member_status_changed=KICKED))
+async def bot_blocked(event: ChatMemberUpdated):
+    """Пользователь заблокировал бота — Telegram сообщает сразу."""
+    if event.chat.type == "private":
+        from ..services import mark_blocked
+        await mark_blocked(event.chat.id)
+
+
+@router.my_chat_member(ChatMemberUpdatedFilter(member_status_changed=MEMBER))
+async def bot_unblocked(event: ChatMemberUpdated):
+    if event.chat.type == "private":
+        from ..services import mark_blocked
+        await mark_blocked(event.chat.id, blocked=False)
 
 
 def source_tag(arg: str) -> str | None:
