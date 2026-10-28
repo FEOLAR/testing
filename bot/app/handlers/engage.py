@@ -210,11 +210,12 @@ async def review_reminders(bot: Bot) -> None:
         blocked = False
         try:
             await ui.push_screen(bot, user.tg_id, texts.review_reminder(), kb.review_reminder(), "review")
-        except TelegramForbiddenError:
-            blocked = True
+        except TelegramForbiddenError as err:
+            from ..services import is_block_error
+            blocked = is_block_error(err)
         except Exception as err:
             log.info("review reminder to %s failed: %s", user.tg_id, err)
-            blocked = "chat not found" in str(err).lower()
+            blocked = False
         async with Session() as s:
             values = {"review_reminded_at": now}
             if blocked:

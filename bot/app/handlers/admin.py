@@ -29,7 +29,7 @@ HELP = (
     "/sources [дни] — откуда пришли люди: метки ссылок, промокоды, рефералка → пробники, покупки, выручка\n"
     "/promo_stats — промокоды: сколько ввели, сколько оплат и на какую сумму\n"
     "/refs — топ пригласивших друзей\n"
-    "/blocked — кто заблокировал бота (ID, @ник, подписка); полный список — файлом\n"
+    "/blocked — кто заблокировал бота (ID, @ник, подписка); /blocked old — старые отметки без даты; /blocked reset — сбросить их\n"
     "/nodes — состояние нод и автораспределение по странам\n"
     "/wlcheck IP1 IP2 … — ссылка для клиента: проверить, какие IP проходят «белые списки» его оператора\n"
     "/top [дни] [кол-во] — кто больше всех тратит трафик (по умолчанию 30 дн., топ-20)\n"
@@ -70,7 +70,8 @@ async def stats(message: Message):
         f"📊 <b>Статистика</b>\n\n"
         f"Пользователей: {st['total']} (новых за сутки: {st['new_day']})\n"
         f"Активных подписок: {st['active']}\n"
-        f"Заблокировали бота: {st['blocked']}\n\n"
+        f"Заблокировали бота: {st['blocked']}"
+        + (f" (+ {st['blocked_old']} старых отметок, см. /blocked)" if st.get('blocked_old') else "") + "\n\n"
         f"Оплаты за 24ч: {fmt(st['day'])}\n"
         f"Оплаты за 30д: {fmt(st['month'])}"
     )
@@ -92,20 +93,32 @@ def _blocked_line(u, now) -> str:
 
 
 @router.message(Command("blocked"))
-async def blocked(message: Message):
+async def blocked(message: Message, command: CommandObject):
     from ..db import utcnow
-    users = await blocked_users()
+    from ..services import reset_old_blocked
+    arg = (command.args or "").strip().lower()
+    if arg == "reset":
+        n = await reset_old_blocked()
+        return await message.answer(f"Снято старых отметок: {n}. Кто на самом деле заблокировал бота — "
+                                    "бот снова отметит сам, уже с датой.")
+    old_mode = arg == "old"
+    users = await blocked_users(old=old_mode)
+    old_count = 0 if old_mode else len(await blocked_users(old=True))
+    note = (f"\n\nЕщё {old_count} — старые отметки без даты (до обновления). Среди них могут быть те, кто "
+            "заблокировал старого GalacticVPN или ни разу не открыл нового бота. Список — <code>/blocked old</code>, "
+            "сбросить — <code>/blocked reset</code>.") if old_count else ""
     if not users:
-        return await message.answer("Никто не заблокировал бота 🎉")
+        return await message.answer(("Старых отметок нет." if old_mode else "Никто не заблокировал бота 🎉") + note)
     now = utcnow()
     active = sum(1 for u in users if u.expire_at and u.expire_at > now)
-    head = (f"🚫 <b>Заблокировали бота: {len(users)}</b> (из них с активной подпиской: {active})\n"
+    title = "Старые отметки без даты" if old_mode else "Заблокировали бота"
+    head = (f"🚫 <b>{title}: {len(users)}</b> (из них с активной подпиской: {active})\n"
             "Сначала — с подпиской, дальше свежие сверху. Время — МСК.\n\n")
     shown = users[:40]
     text = head + "\n".join(_blocked_line(u, now) for u in shown)
     if len(users) > len(shown):
         text += f"\n\n…и ещё {len(users) - len(shown)} — полный список в файле."
-    await message.answer(text)
+    await message.answer(text + note)
     if len(users) > len(shown):
         import re
         rows = ["tg_id;username;имя;заблокировал (МСК);подписка до;источник"]

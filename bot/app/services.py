@@ -286,8 +286,10 @@ async def revoke_link(tg_id: int, by_admin: bool = False) -> User:
 
 
 def is_block_error(err: Exception) -> bool:
+    """Только настоящая блокировка или удалённый аккаунт. «chat not found» / «can't initiate conversation» —
+    человек просто ни разу не запускал этого бота (например, пользовался только старым GalacticVPN)."""
     msg = str(err).lower()
-    return "blocked" in msg or "deactivated" in msg or "chat not found" in msg
+    return "blocked by the user" in msg or "user is deactivated" in msg
 
 
 async def mark_blocked(tg_id: int, blocked: bool = True) -> None:
@@ -302,14 +304,26 @@ async def mark_blocked(tg_id: int, blocked: bool = True) -> None:
         await s.commit()
 
 
-async def blocked_users() -> list[User]:
-    """Кто заблокировал бота: сначала с активной подпиской, потом по дате блокировки (свежие сверху)."""
+async def blocked_users(old: bool = False) -> list[User]:
+    """Кто заблокировал бота: сначала с активной подпиской, потом по дате блокировки (свежие сверху).
+    old=True — старые отметки без даты (до v49: в т.ч. те, кто не запускал нового бота после переезда)."""
     now = utcnow()
     async with Session() as s:
-        users = list((await s.execute(select(User).where(User.is_blocked.is_(True)))).scalars())
+        cond = User.blocked_at.is_(None) if old else User.blocked_at.is_not(None)
+        users = list((await s.execute(select(User).where(User.is_blocked.is_(True), cond))).scalars())
     far = now.replace(year=1970)
     users.sort(key=lambda u: (bool(u.expire_at and u.expire_at > now), u.blocked_at or far), reverse=True)
     return users
+
+
+async def reset_old_blocked() -> int:
+    """Снять старые отметки без даты. Настоящие блокировки бот снова отметит сам (Telegram сообщает сразу
+    или при следующей рассылке)."""
+    async with Session() as s:
+        res = await s.execute(update(User).where(User.is_blocked.is_(True), User.blocked_at.is_(None))
+                              .values(is_blocked=False))
+        await s.commit()
+    return res.rowcount or 0
 
 
 async def safe_send(bot: Bot, chat_id: int, text: str, **kw) -> bool:
@@ -318,7 +332,7 @@ async def safe_send(bot: Bot, chat_id: int, text: str, **kw) -> bool:
         return True
     except Exception as e:  # пользователь заблокировал бота и т.п.
         log.info("send to %s failed: %s", chat_id, e)
-        if "blocked" in str(e).lower() or "deactivated" in str(e).lower():
+        if is_block_error(e):
             await mark_blocked(chat_id)
         return False
 
@@ -495,7 +509,10 @@ async def collect_stats() -> dict:
             "total": await s.scalar(select(func.count()).select_from(User)),
             "active": await s.scalar(select(func.count()).where(User.expire_at > now)),
             "new_day": await s.scalar(select(func.count()).where(User.created_at > day_ago)),
-            "blocked": await s.scalar(select(func.count()).where(User.is_blocked.is_(True))),
+            "blocked": await s.scalar(select(func.count()).where(User.is_blocked.is_(True),
+                                                                 User.blocked_at.is_not(None))),
+            "blocked_old": await s.scalar(select(func.count()).where(User.is_blocked.is_(True),
+                                                                     User.blocked_at.is_(None))),
         }
         for key, since in (("day", day_ago), ("month", month_ago)):
             rows = await s.execute(
