@@ -110,4 +110,7 @@
     <string name="choose_idle">Заставка при простое</string>
     <string name="choose_city">Город для погоды</string>
     <string name="low_end_note">Слабое устройство — анимации выключены по умолчанию</string>
+    <string name="dream_label">WhiteHole — заставка</string>
+    <string name="set_dream">Системная заставка WhiteHole</string>
+    <string name="set_dream_value">открыть</string>
 </resources>

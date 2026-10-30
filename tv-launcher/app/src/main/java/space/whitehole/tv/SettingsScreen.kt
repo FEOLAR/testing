@@ -51,6 +51,7 @@ class SettingsScreen(private val a: MainActivity, val page: View) {
         if (!a.isDefaultHome()) {
             add("home", a.getString(R.string.set_make_home), "") { a.openHomeSettings() }
         }
+        add("dream", a.getString(R.string.set_dream), a.getString(R.string.set_dream_value)) { a.openDreamSettings() }
         add("system", a.getString(R.string.set_system), "") { a.openSettings() }
         if (a.session.paired) {
             add("unpair", a.getString(R.string.set_unpair), if (unpairArmed) a.getString(R.string.set_unpair_confirm) else "") {

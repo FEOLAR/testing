@@ -28,6 +28,7 @@ import android.provider.Settings
 import android.util.DisplayMetrics
 import android.util.Log
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.DecelerateInterpolator
@@ -71,6 +72,18 @@ class MainActivity : Activity() {
     private var tintTarget = 0
     private var tintCurrent = 0
     private var tintAnimator: ValueAnimator? = null
+
+    // заставка при простое
+    private var lastInputAt = System.currentTimeMillis()
+    private var idleView: View? = null
+    private var idleController: ScreensaverController? = null
+    private var swallowKeyUp = -1
+    private val idleCheck = object : Runnable {
+        override fun run() {
+            checkIdle()
+            mainHandler.postDelayed(this, 20_000L)
+        }
+    }
     private lateinit var mainContent: View
     private lateinit var btnSub: TextView
     private lateinit var subLine: TextView
@@ -369,6 +382,9 @@ class MainActivity : Activity() {
         updateVpnStatus()
         reloadApps()
         resumed = true
+        lastInputAt = System.currentTimeMillis()
+        mainHandler.removeCallbacks(idleCheck)
+        mainHandler.postDelayed(idleCheck, 20_000L)
         updateVpnStatus()
         updateBlackHoleRunning()
         updateDefaultHomeUi()
@@ -382,6 +398,8 @@ class MainActivity : Activity() {
     override fun onPause() {
         super.onPause()
         resumed = false
+        mainHandler.removeCallbacks(idleCheck)
+        hideIdle()
         updateBlackHoleRunning()
         mainHandler.removeCallbacks(clockTick)
     }
@@ -1405,7 +1423,7 @@ class MainActivity : Activity() {
     }
 
     private fun updateBlackHoleRunning() {
-        blackHole.setRunning(resumed && page == Page.HOME && !destroyed)
+        blackHole.setRunning(resumed && page == Page.HOME && !destroyed && idleView == null)
     }
 
     private fun pageViewFor(p: Page): View = when (p) {
@@ -1473,7 +1491,92 @@ class MainActivity : Activity() {
     }
 
     internal fun onIdleSettingChanged() {
-        // заставка при простое — подключается отдельно
+        lastInputAt = System.currentTimeMillis()
+    }
+
+    // ---------- Заставка при простое ----------
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        lastInputAt = System.currentTimeMillis()
+        if (idleView != null) {
+            // любая кнопка только убирает заставку
+            if (event.action == KeyEvent.ACTION_DOWN) {
+                swallowKeyUp = event.keyCode
+                hideIdle()
+            }
+            return true
+        }
+        if (swallowKeyUp != -1 && event.keyCode == swallowKeyUp) {
+            // повторы и отпускание кнопки, которой разбудили, тоже съедаем
+            if (event.action == KeyEvent.ACTION_UP) swallowKeyUp = -1
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    /** Экран выбора системной заставки (если есть на устройстве). */
+    internal fun openDreamSettings() {
+        val i = Intent(Settings.ACTION_DREAM_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            if (i.resolveActivity(packageManager) != null) {
+                startActivity(i)
+                return
+            }
+        } catch (e: Exception) {
+            // нет такого экрана
+        }
+        openSettings()
+    }
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        lastInputAt = System.currentTimeMillis()
+        if (idleView != null) {
+            if (ev.actionMasked == MotionEvent.ACTION_DOWN) hideIdle()
+            return true
+        }
+        return super.dispatchTouchEvent(ev)
+    }
+
+    override fun dispatchGenericMotionEvent(ev: MotionEvent): Boolean {
+        lastInputAt = System.currentTimeMillis()
+        if (idleView != null) {
+            hideIdle()
+            return true
+        }
+        return super.dispatchGenericMotionEvent(ev)
+    }
+
+    private fun checkIdle() {
+        val min = prefs.idleMinutes
+        if (min <= 0 || !resumed || idleView != null) return
+        if (page != Page.HOME || tileMenu.visibility == View.VISIBLE || choiceDialog.isShowing) return
+        if (System.currentTimeMillis() - lastInputAt >= min * 60_000L) showIdle()
+    }
+
+    private fun showIdle() {
+        if (idleView != null) return
+        val root = findViewById<ViewGroup>(R.id.root)
+        val v = layoutInflater.inflate(R.layout.screensaver, root, false)
+        v.alpha = 0f
+        root.addView(v)
+        idleView = v
+        val c = ScreensaverController(v, prefs.animations)
+        idleController = c
+        c.start()
+        v.animate().alpha(1f).setDuration(if (prefs.animations) 800L else 0L).start()
+        v.requestFocus()
+        updateBlackHoleRunning()
+    }
+
+    private fun hideIdle() {
+        val v = idleView ?: return
+        idleView = null
+        idleController?.stop()
+        idleController = null
+        (v.parent as? ViewGroup)?.removeView(v)
+        lastInputAt = System.currentTimeMillis()
+        updateBlackHoleRunning()
+        if (page == Page.HOME && !btnConnect.hasFocus() && currentFocus == null) btnConnect.requestFocus()
     }
 
     internal fun onCitySettingChanged() {

@@ -56,6 +56,20 @@ adb install -r whitehole-tv.apk
 
 Настройки и избранное сохранятся.
 
+## 6. Заставка WhiteHole
+
+В лаунчере уже есть своя заставка при простое на главном экране (Настройки → «Заставка при простое»: 5/10/15 мин или выкл).
+
+Сделать WhiteHole системной заставкой телевизора (по одной строке):
+
+```powershell
+adb shell settings put secure screensaver_components space.whitehole.tv/.ScreensaverService
+adb shell settings put secure screensaver_enabled 1
+```
+
+Проверить, что записалось: `adb shell settings get secure screensaver_components` — должно вывести `space.whitehole.tv/.ScreensaverService`.
+Через сколько минут включится заставка, задаётся в настройках телевизора. На Google TV вместо заставок «Фоновый режим» (Ambient) — там системная заставка может не применяться.
+
 ## Без компьютера (v2)
 
 1. На телевизоре в браузере (или в приложении Downloader) откройте `77-91-95-53.sslip.io:9443/miniapp/tv` → «Скачать WhiteHole для ТВ» → откройте файл → разрешите установку из этого источника → «Установить».
