@@ -10,8 +10,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:importantForAccessibility="no"
-        android:scaleType="centerCrop"
-        android:src="@drawable/hero_bg" />
+        android:scaleType="centerCrop" />
 
     <View
         android:layout_width="match_parent"
@@ -32,6 +31,7 @@
         android:background="@color/black" />
 
     <LinearLayout
+        android:id="@+id/content"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:clipChildren="false"
@@ -192,6 +192,15 @@
                     android:textColor="@color/white"
                     android:textSize="18sp" />
 
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginLeft="48dp"
+                    android:layout_marginTop="2dp"
+                    android:text="@string/row_hint"
+                    android:textColor="@color/text_muted"
+                    android:textSize="13sp" />
+
                 <HorizontalScrollView
                     android:id="@+id/fav_scroll"
                     android:layout_width="match_parent"
@@ -227,6 +236,7 @@
                 android:visibility="gone">
 
                 <TextView
+                    android:id="@+id/apps_hint"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginLeft="48dp"
@@ -294,7 +304,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="match_parent"
                         android:contentDescription="@string/qr_desc"
-                        android:scaleType="fitCenter" />
+                        android:scaleType="center" />
                 </FrameLayout>
 
                 <LinearLayout
@@ -375,4 +385,77 @@
             </LinearLayout>
         </FrameLayout>
     </LinearLayout>
+    <!-- Меню плитки на главном -->
+    <FrameLayout
+        android:id="@+id/tile_menu"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#99000000"
+        android:clickable="true"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="320dp"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:background="@drawable/menu_card"
+            android:clipChildren="false"
+            android:clipToPadding="false"
+            android:orientation="vertical"
+            android:padding="20dp">
+
+            <TextView
+                android:id="@+id/menu_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
+                android:singleLine="true"
+                android:textColor="@color/white"
+                android:textSize="18sp" />
+
+            <TextView
+                android:id="@+id/menu_left"
+                style="@style/WhButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:nextFocusLeft="@id/menu_left"
+                android:nextFocusRight="@id/menu_left"
+                android:nextFocusUp="@id/menu_left"
+                android:text="@string/menu_left" />
+
+            <TextView
+                android:id="@+id/menu_right"
+                style="@style/WhButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:nextFocusLeft="@id/menu_right"
+                android:nextFocusRight="@id/menu_right"
+                android:text="@string/menu_right" />
+
+            <TextView
+                android:id="@+id/menu_remove"
+                style="@style/WhButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:nextFocusLeft="@id/menu_remove"
+                android:nextFocusRight="@id/menu_remove"
+                android:text="@string/menu_remove" />
+
+            <TextView
+                android:id="@+id/menu_cancel"
+                style="@style/WhButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:nextFocusDown="@id/menu_cancel"
+                android:nextFocusLeft="@id/menu_cancel"
+                android:nextFocusRight="@id/menu_cancel"
+                android:text="@string/menu_cancel" />
+        </LinearLayout>
+    </FrameLayout>
 </FrameLayout>

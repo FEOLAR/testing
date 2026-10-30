@@ -27,6 +27,32 @@ class Favorites(context: Context) {
         }
     }
 
+    /** Добавить в конец. @return false если уже было */
+    fun add(pkg: String): Boolean {
+        val list = get()
+        if (list.contains(pkg)) return false
+        list.add(pkg)
+        save(list)
+        return true
+    }
+
+    fun remove(pkg: String) {
+        val list = get()
+        if (list.remove(pkg)) save(list)
+    }
+
+    /** Сдвинуть на delta позиций (-1 влево, +1 вправо). */
+    fun move(pkg: String, delta: Int) {
+        val list = get()
+        val from = list.indexOf(pkg)
+        if (from < 0) return
+        val to = (from + delta).coerceIn(0, list.size - 1)
+        if (to == from) return
+        list.removeAt(from)
+        list.add(to, pkg)
+        save(list)
+    }
+
     /** При первом запуске: сначала известные видеосервисы, затем остальные — всего до 8. */
     fun ensureDefaults(apps: List<AppEntry>) {
         if (prefs.contains(KEY) || apps.isEmpty()) return

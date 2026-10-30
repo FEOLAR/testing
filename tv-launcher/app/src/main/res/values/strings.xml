@@ -26,4 +26,12 @@
     <string name="fav_removed">«%1$s» убрано из избранного</string>
     <string name="launch_failed">Не удалось открыть приложение</string>
     <string name="qr_desc">QR-код для перехода в бота</string>
+    <string name="tile_add">Добавить</string>
+    <string name="row_hint">Удерживай ОК, чтобы изменить</string>
+    <string name="pick_hint">Выбор: нажми ОК на приложении — оно появится на главном экране</string>
+    <string name="menu_left">Сдвинуть влево</string>
+    <string name="menu_right">Сдвинуть вправо</string>
+    <string name="menu_remove">Убрать с главного</string>
+    <string name="menu_cancel">Отмена</string>
+    <string name="fav_already">«%1$s» уже на главном</string>
 </resources>

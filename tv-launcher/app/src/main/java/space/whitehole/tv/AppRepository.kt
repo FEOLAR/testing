@@ -3,9 +3,12 @@ package space.whitehole.tv
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
+import android.content.res.Resources
 import android.graphics.drawable.Drawable
+import android.util.DisplayMetrics
 import java.text.Collator
 import java.util.Locale
 
@@ -72,9 +75,25 @@ object AppRepository {
         return result.values.sortedWith(Comparator { a, b -> collator.compare(a.label, b.label) })
     }
 
+    /**
+     * Баннер в максимальном качестве: берём ресурс приложения сразу для плотности xxxhdpi
+     * (на 4K-телевизоре иначе система может отдать картинку для меньшей плотности).
+     */
     fun loadBanner(pm: PackageManager, app: AppEntry): Drawable? {
+        val ai = app.activityInfo
+        val appInfo: ApplicationInfo? = ai.applicationInfo
+        val res = resourcesFor(pm, appInfo)
+        if (res != null) {
+            val ids = ArrayList<Int>()
+            if (ai.banner != 0) ids.add(ai.banner)
+            if (appInfo != null && appInfo.banner != 0) ids.add(appInfo.banner)
+            for (id in ids) {
+                val d = hiDensity(res, id)
+                if (d != null) return d
+            }
+        }
         try {
-            val d = app.activityInfo.loadBanner(pm)
+            val d = ai.loadBanner(pm)
             if (d != null) return d
         } catch (e: Exception) {
             // ignore
@@ -89,9 +108,40 @@ object AppRepository {
     }
 
     fun loadIcon(pm: PackageManager, app: AppEntry): Drawable? {
+        val ai = app.activityInfo
+        val appInfo: ApplicationInfo? = ai.applicationInfo
+        val res = resourcesFor(pm, appInfo)
+        if (res != null) {
+            val ids = ArrayList<Int>()
+            if (ai.icon != 0) ids.add(ai.icon)
+            if (appInfo != null && appInfo.icon != 0) ids.add(appInfo.icon)
+            for (id in ids) {
+                val d = hiDensity(res, id)
+                if (d != null) return d
+            }
+        }
         return try {
-            app.activityInfo.loadIcon(pm)
+            ai.loadIcon(pm)
         } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun resourcesFor(pm: PackageManager, appInfo: ApplicationInfo?): Resources? {
+        if (appInfo == null) return null
+        return try {
+            pm.getResourcesForApplication(appInfo)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun hiDensity(res: Resources, id: Int): Drawable? {
+        return try {
+            res.getDrawableForDensity(id, DisplayMetrics.DENSITY_XXXHIGH, null)
+        } catch (e: Exception) {
+            null
+        } catch (e: OutOfMemoryError) {
             null
         }
     }

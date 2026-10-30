@@ -41,4 +41,15 @@
             android:textColor="@color/white"
             android:textSize="13sp" />
     </LinearLayout>
+
+    <ImageView
+        android:id="@+id/tile_badge"
+        android:layout_width="22dp"
+        android:layout_height="22dp"
+        android:layout_gravity="top|right"
+        android:layout_marginTop="6dp"
+        android:layout_marginRight="6dp"
+        android:importantForAccessibility="no"
+        android:src="@drawable/badge_check"
+        android:visibility="gone" />
 </FrameLayout>

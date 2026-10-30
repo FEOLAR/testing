@@ -6,9 +6,11 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Shader
+import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.net.ConnectivityManager
 import android.net.Network
@@ -19,6 +21,8 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.util.DisplayMetrics
+import android.util.Log
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
@@ -57,7 +61,11 @@ class MainActivity : Activity() {
     private var lastFavSig = ""
     private var lastAppsSig = ""
     private var destroyed = false
+    private var qrBuiltSize = 0
+    private var pickMode = false
+    private var menuPkg: String? = null
 
+    private lateinit var heroBg: ImageView
     private lateinit var dim: View
     private lateinit var tabHome: TextView
     private lateinit var tabApps: TextView
@@ -78,6 +86,14 @@ class MainActivity : Activity() {
     private lateinit var qrImage: ImageView
     private lateinit var btnOpenHapp: TextView
     private lateinit var btnHelpBack: TextView
+    private lateinit var content: ViewGroup
+    private lateinit var appsHint: TextView
+    private lateinit var tileMenu: View
+    private lateinit var menuTitle: TextView
+    private lateinit var menuLeft: TextView
+    private lateinit var menuRight: TextView
+    private lateinit var menuRemove: TextView
+    private lateinit var menuCancel: TextView
 
     private var connectivity: ConnectivityManager? = null
     private var vpnCallbackRegistered = false
@@ -121,6 +137,7 @@ class MainActivity : Activity() {
         setContentView(R.layout.activity_main)
         favorites = Favorites(this)
 
+        heroBg = findViewById(R.id.hero_bg)
         dim = findViewById(R.id.dim)
         tabHome = findViewById(R.id.tab_home)
         tabApps = findViewById(R.id.tab_apps)
@@ -141,6 +158,19 @@ class MainActivity : Activity() {
         qrImage = findViewById(R.id.qr_image)
         btnOpenHapp = findViewById(R.id.btn_open_happ)
         btnHelpBack = findViewById(R.id.btn_help_back)
+        content = findViewById(R.id.content)
+        appsHint = findViewById(R.id.apps_hint)
+        tileMenu = findViewById(R.id.tile_menu)
+        menuTitle = findViewById(R.id.menu_title)
+        menuLeft = findViewById(R.id.menu_left)
+        menuRight = findViewById(R.id.menu_right)
+        menuRemove = findViewById(R.id.menu_remove)
+        menuCancel = findViewById(R.id.menu_cancel)
+        menuLeft.setOnClickListener { onMenuAction(MENU_LEFT) }
+        menuRight.setOnClickListener { onMenuAction(MENU_RIGHT) }
+        menuRemove.setOnClickListener { onMenuAction(MENU_REMOVE) }
+        menuCancel.setOnClickListener { onMenuAction(MENU_CANCEL) }
+        tileMenu.setOnClickListener { hideTileMenu(true) }
 
         // Градиент на заголовке: белый → #AAB3C5
         val titleWidth = heroTitle.paint.measureText(heroTitle.text.toString())
@@ -150,7 +180,10 @@ class MainActivity : Activity() {
         )
 
         tabHome.setOnClickListener { showPage(Page.HOME, true) }
-        tabApps.setOnClickListener { showPage(Page.APPS, true) }
+        tabApps.setOnClickListener {
+            pickMode = false
+            showPage(Page.APPS, true)
+        }
         btnConnect.setOnClickListener { onConnectClicked() }
         btnHow.setOnClickListener { showPage(Page.HELP, true) }
         btnHelpBack.setOnClickListener { showPage(Page.HOME, true) }
@@ -159,12 +192,21 @@ class MainActivity : Activity() {
             if (p != null) launchApp(p)
         }
 
-        for (v in listOf<View>(tabHome, tabApps, btnConnect, btnHow, btnOpenHapp, btnHelpBack)) {
+        for (v in listOf<View>(tabHome, tabApps, btnConnect, btnHow, btnOpenHapp, btnHelpBack, menuLeft, menuRight, menuRemove, menuCancel)) {
             setupFocusAnim(v, 1.06f)
         }
 
-        val qr = makeQr(BOT_LINK, dp(232))
-        if (qr != null) qrImage.setImageBitmap(qr)
+        // QR строим под точный размер в пикселях, когда известен размер view
+        qrImage.addOnLayoutChangeListener { v, left, top, right, bottom, _, _, _, _ ->
+            val size = minOf(right - left, bottom - top)
+            if (size > 0 && size != qrBuiltSize) {
+                qrBuiltSize = size
+                renderQr(v as ImageView, size)
+            }
+        }
+
+        val realMetrics = logDisplayMetrics()
+        loadHeroBackground(realMetrics.widthPixels, realMetrics.heightPixels)
 
         connectivity = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
         registerVpnCallback()
@@ -215,6 +257,8 @@ class MainActivity : Activity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         // Нажали «Домой», когда мы уже открыты — возвращаемся на главную
+        hideTileMenu(false)
+        pickMode = false
         showPage(Page.HOME, true)
         favScroll.scrollTo(0, 0)
     }
@@ -222,8 +266,15 @@ class MainActivity : Activity() {
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         // На главном экране «Назад» ничего не делает (мы — домашний экран)
+        if (tileMenu.visibility == View.VISIBLE) {
+            hideTileMenu(true)
+            return
+        }
         if (page != Page.HOME) {
-            showPage(Page.HOME, true)
+            val wasPick = pickMode
+            pickMode = false
+            showPage(Page.HOME, !wasPick)
+            if (wasPick) focusAddTile()
         }
     }
 
@@ -231,17 +282,21 @@ class MainActivity : Activity() {
 
     private fun showPage(p: Page, moveFocus: Boolean) {
         page = p
+        if (p != Page.APPS) pickMode = false
         pageHome.visibility = if (p == Page.HOME) View.VISIBLE else View.GONE
         pageApps.visibility = if (p == Page.APPS) View.VISIBLE else View.GONE
         pageHelp.visibility = if (p == Page.HELP) View.VISIBLE else View.GONE
         tabHome.isSelected = p == Page.HOME
         tabApps.isSelected = p == Page.APPS
+        appsHint.setText(if (pickMode) R.string.pick_hint else R.string.apps_hint)
+        appsHint.setTextColor(if (pickMode) Color.WHITE else Color.parseColor("#8A8F99"))
         dim.animate().alpha(if (p == Page.HOME) 0f else 0.82f).setDuration(200).start()
 
         if (p == Page.HELP) {
             if (happPackage == null) happPackage = AppRepository.findHapp(this, apps)
             btnOpenHapp.visibility = if (happPackage != null) View.VISIBLE else View.GONE
         }
+        if (p == Page.APPS) refreshBadges()
 
         if (!moveFocus) return
         when (p) {
@@ -253,6 +308,21 @@ class MainActivity : Activity() {
             }
             Page.HELP -> {
                 if (btnOpenHapp.visibility == View.VISIBLE) btnOpenHapp.requestFocus() else btnHelpBack.requestFocus()
+            }
+        }
+    }
+
+    private fun openPicker() {
+        pickMode = true
+        showPage(Page.APPS, true)
+    }
+
+    private fun focusAddTile() {
+        for (i in 0 until favRow.childCount) {
+            val c = favRow.getChildAt(i)
+            if (c.tag == TAG_ADD) {
+                c.requestFocus()
+                return
             }
         }
     }
@@ -298,14 +368,16 @@ class MainActivity : Activity() {
         val favSig = favorites.get().joinToString("|") + "#" + appsSig
         if (favSig != lastFavSig) {
             lastFavSig = favSig
-            buildFavRow()
+            if (tileMenu.visibility != View.VISIBLE) buildFavRow(null)
         }
         if (page == Page.HELP) {
             btnOpenHapp.visibility = if (happPackage != null) View.VISIBLE else View.GONE
         }
+        refreshBadges()
     }
 
-    private fun buildFavRow() {
+    /** Перестроить ряд на главной. focusPkg — какую плитку сфокусировать после. */
+    private fun buildFavRow(focusPkg: String?) {
         val focused = favRow.focusedChild
         val focusedIndex = if (focused != null) favRow.indexOfChild(focused) else -1
         favRow.removeAllViews()
@@ -315,17 +387,32 @@ class MainActivity : Activity() {
         for (pkg in favorites.get()) {
             val app = byPkg[pkg] ?: continue
             val tile = inflateTile(favRow)
-            bindAppTile(tile, app)
+            bindAppTile(tile, app, true)
             favRow.addView(tile)
         }
+        val addTile = makeActionTile(favRow, R.drawable.ic_add, getString(R.string.tile_add)) { openPicker() }
+        addTile.tag = TAG_ADD
+        favRow.addView(addTile)
+        favRow.addView(makeActionTile(favRow, R.drawable.ic_apps, getString(R.string.tile_all_apps)) {
+            pickMode = false
+            showPage(Page.APPS, true)
+        })
         favRow.addView(makeActionTile(favRow, R.drawable.ic_settings, getString(R.string.tile_settings)) {
             openSettings()
         })
-        favRow.addView(makeActionTile(favRow, R.drawable.ic_apps, getString(R.string.tile_all_apps)) {
-            showPage(Page.APPS, true)
-        })
+        lastFavSig = favorites.get().joinToString("|") + "#" + lastAppsSig
 
-        if (focusedIndex >= 0 && page == Page.HOME) {
+        if (page != Page.HOME) return
+        if (focusPkg != null) {
+            for (i in 0 until favRow.childCount) {
+                val c = favRow.getChildAt(i)
+                if (c.tag == focusPkg) {
+                    c.requestFocus()
+                    return
+                }
+            }
+        }
+        if (focusedIndex >= 0) {
             val idx = minOf(focusedIndex, favRow.childCount - 1)
             favRow.getChildAt(idx)?.requestFocus()
         }
@@ -336,10 +423,11 @@ class MainActivity : Activity() {
         appsGrid.removeAllViews()
         for (app in apps) {
             val tile = inflateTile(appsGrid)
-            bindAppTile(tile, app)
+            bindAppTile(tile, app, false)
             appsGrid.addView(tile)
         }
         appsEmpty.visibility = if (apps.isEmpty()) View.VISIBLE else View.GONE
+        refreshBadges()
 
         if (page == Page.APPS && focusedTag != null) {
             for (i in 0 until appsGrid.childCount) {
@@ -350,6 +438,17 @@ class MainActivity : Activity() {
                 }
             }
             appsGrid.getChildAt(0)?.requestFocus()
+        }
+    }
+
+    /** Галочка на плитках в сетке у приложений, которые уже на главном. */
+    private fun refreshBadges() {
+        val favs = HashSet(favorites.get())
+        for (i in 0 until appsGrid.childCount) {
+            val c = appsGrid.getChildAt(i)
+            val pkg = c.tag as? String ?: continue
+            val badge = c.findViewById<View>(R.id.tile_badge) ?: continue
+            badge.visibility = if (favs.contains(pkg)) View.VISIBLE else View.GONE
         }
     }
 
@@ -364,7 +463,7 @@ class MainActivity : Activity() {
         return tile
     }
 
-    private fun bindAppTile(tile: View, app: AppEntry) {
+    private fun bindAppTile(tile: View, app: AppEntry, inHomeRow: Boolean) {
         val label = tile.findViewById<TextView>(R.id.tile_label)
         label.text = app.label
         tile.contentDescription = app.label
@@ -394,20 +493,34 @@ class MainActivity : Activity() {
             }
         }
 
-        tile.setOnClickListener { launchApp(app.packageName) }
+        tile.setOnClickListener {
+            if (!inHomeRow && pickMode) {
+                pickApp(app)
+            } else {
+                launchApp(app.packageName)
+            }
+        }
         tile.setOnLongClickListener {
-            toggleFavorite(app)
+            onTileLongPress(app, inHomeRow)
             true
         }
         tile.setOnKeyListener { _, keyCode, event ->
             if (keyCode == KeyEvent.KEYCODE_MENU) {
-                if (event.action == KeyEvent.ACTION_UP) toggleFavorite(app)
+                if (event.action == KeyEvent.ACTION_UP) onTileLongPress(app, inHomeRow)
                 true
             } else {
                 false
             }
         }
         setupFocusAnim(tile, 1.06f)
+    }
+
+    private fun onTileLongPress(app: AppEntry, inHomeRow: Boolean) {
+        if (inHomeRow) {
+            showTileMenu(app)
+        } else {
+            toggleFavorite(app)
+        }
     }
 
     private fun applyVisual(tile: View, vis: Visual) {
@@ -443,12 +556,82 @@ class MainActivity : Activity() {
         return tile
     }
 
+    /** Режим «выбор»: ОК добавляет приложение на главный и возвращает туда. */
+    private fun pickApp(app: AppEntry) {
+        val added = favorites.add(app.packageName)
+        val msg = if (added) getString(R.string.fav_added, app.label) else getString(R.string.fav_already, app.label)
+        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+        pickMode = false
+        showPage(Page.HOME, false)
+        buildFavRow(app.packageName)
+        refreshBadges()
+    }
+
     private fun toggleFavorite(app: AppEntry) {
         val added = favorites.toggle(app.packageName)
         val msg = if (added) getString(R.string.fav_added, app.label) else getString(R.string.fav_removed, app.label)
         Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
-        lastFavSig = favorites.get().joinToString("|") + "#" + lastAppsSig
-        buildFavRow()
+        buildFavRow(null)
+        refreshBadges()
+    }
+
+    // ---------- Меню плитки на главном ----------
+
+    private fun showTileMenu(app: AppEntry) {
+        menuPkg = app.packageName
+        menuTitle.text = app.label
+        val list = favorites.get()
+        val idx = list.indexOf(app.packageName)
+        menuLeft.visibility = if (idx > 0) View.VISIBLE else View.GONE
+        menuRight.visibility = if (idx >= 0 && idx < list.size - 1) View.VISIBLE else View.GONE
+        tileMenu.visibility = View.VISIBLE
+        var first: View = menuRemove
+        if (menuRight.visibility == View.VISIBLE) first = menuRight
+        if (menuLeft.visibility == View.VISIBLE) first = menuLeft
+        first.requestFocus()
+        // Пока меню открыто, фокус не уходит на экран под ним
+        content.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+    }
+
+    private fun hideTileMenu(restoreFocus: Boolean) {
+        if (tileMenu.visibility != View.VISIBLE) return
+        tileMenu.visibility = View.GONE
+        content.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
+        val pkg = menuPkg
+        menuPkg = null
+        if (restoreFocus && pkg != null) {
+            for (i in 0 until favRow.childCount) {
+                val c = favRow.getChildAt(i)
+                if (c.tag == pkg) {
+                    c.requestFocus()
+                    return
+                }
+            }
+        }
+    }
+
+    private fun onMenuAction(action: Int) {
+        val pkg = menuPkg ?: return
+        when (action) {
+            MENU_LEFT, MENU_RIGHT -> {
+                favorites.move(pkg, if (action == MENU_LEFT) -1 else 1)
+                hideTileMenu(false)
+                buildFavRow(pkg)
+            }
+            MENU_REMOVE -> {
+                var index = -1
+                for (i in 0 until favRow.childCount) {
+                    if (favRow.getChildAt(i).tag == pkg) index = i
+                }
+                favorites.remove(pkg)
+                hideTileMenu(false)
+                buildFavRow(null)
+                refreshBadges()
+                val target = favRow.getChildAt(maxOf(0, minOf(index, favRow.childCount - 1)))
+                target?.requestFocus()
+            }
+            else -> hideTileMenu(true)
+        }
     }
 
     private fun launchApp(pkg: String) {
@@ -545,31 +728,132 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun makeQr(text: String, size: Int): Bitmap? {
-        return try {
+    /**
+     * QR: 1 модуль = целое число пикселей, без сглаживания — чётко на любом экране.
+     */
+    private fun renderQr(view: ImageView, sizePx: Int) {
+        try {
             val hints = HashMap<EncodeHintType, Any>()
             hints[EncodeHintType.MARGIN] = 1
             hints[EncodeHintType.ERROR_CORRECTION] = ErrorCorrectionLevel.M
             hints[EncodeHintType.CHARACTER_SET] = "UTF-8"
-            val matrix = QRCodeWriter().encode(text, BarcodeFormat.QR_CODE, size, size, hints)
-            val w = matrix.width
-            val h = matrix.height
-            val pixels = IntArray(w * h)
-            for (y in 0 until h) {
-                val offset = y * w
-                for (x in 0 until w) {
-                    pixels[offset + x] = if (matrix.get(x, y)) Color.BLACK else Color.WHITE
+            // размер 0 → матрица «1 пиксель на модуль»
+            val matrix = QRCodeWriter().encode(BOT_LINK, BarcodeFormat.QR_CODE, 0, 0, hints)
+            val modules = matrix.width
+            val scale = maxOf(1, sizePx / modules)
+            val side = modules * scale
+            val pixels = IntArray(side * side)
+            for (my in 0 until modules) {
+                for (mx in 0 until modules) {
+                    val color = if (matrix.get(mx, my)) Color.BLACK else Color.WHITE
+                    val baseY = my * scale
+                    val baseX = mx * scale
+                    for (dy in 0 until scale) {
+                        val row = (baseY + dy) * side + baseX
+                        for (dx in 0 until scale) {
+                            pixels[row + dx] = color
+                        }
+                    }
                 }
             }
-            Bitmap.createBitmap(pixels, w, h, Bitmap.Config.ARGB_8888)
+            val bmp = Bitmap.createBitmap(pixels, side, side, Bitmap.Config.ARGB_8888)
+            val drawable = BitmapDrawable(resources, bmp)
+            drawable.setFilterBitmap(false)
+            drawable.setAntiAlias(false)
+            view.setImageDrawable(drawable)
         } catch (e: Exception) {
-            null
+            Log.w(TAG, "QR failed", e)
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun logDisplayMetrics(): DisplayMetrics {
+        val real = DisplayMetrics()
+        try {
+            windowManager.defaultDisplay.getRealMetrics(real)
+        } catch (e: Exception) {
+            real.setTo(resources.displayMetrics)
+        }
+        val dm = resources.displayMetrics
+        val mode = try {
+            val m = windowManager.defaultDisplay.mode
+            "${m.physicalWidth}x${m.physicalHeight}@${m.refreshRate}"
+        } catch (e: Exception) {
+            "?"
+        }
+        Log.i(
+            TAG,
+            "display real=${real.widthPixels}x${real.heightPixels} densityDpi=${real.densityDpi} " +
+                "density=${dm.density} logical=${(dm.widthPixels / dm.density).toInt()}x${(dm.heightPixels / dm.density).toInt()}dp " +
+                "scaledDensity=${dm.scaledDensity} mode=$mode"
+        )
+        return real
+    }
+
+    /**
+     * Фон 3840×2160 без масштабирования ресурсов (inScaled=false). Если экран меньше
+     * хотя бы в 2 раза — уменьшаем через inSampleSize; увеличивать никогда не увеличиваем.
+     */
+    private fun loadHeroBackground(screenW: Int, screenH: Int) {
+        val res = resources
+        val sw = if (screenW > 0) screenW else 1920
+        val sh = if (screenH > 0) screenH else 1080
+        try {
+            io.execute {
+                var bmp: Bitmap? = null
+                try {
+                    val bounds = BitmapFactory.Options()
+                    bounds.inJustDecodeBounds = true
+                    bounds.inScaled = false
+                    BitmapFactory.decodeResource(res, R.drawable.hero_bg, bounds)
+                    var sample = 1
+                    while (bounds.outWidth / (sample * 2) >= sw && bounds.outHeight / (sample * 2) >= sh) {
+                        sample *= 2
+                    }
+                    val opts = BitmapFactory.Options()
+                    opts.inScaled = false
+                    opts.inPreferredConfig = Bitmap.Config.ARGB_8888
+                    opts.inSampleSize = sample
+                    bmp = BitmapFactory.decodeResource(res, R.drawable.hero_bg, opts)
+                    Log.i(TAG, "hero ${bounds.outWidth}x${bounds.outHeight} sample=$sample -> ${bmp?.width}x${bmp?.height}")
+                } catch (e: OutOfMemoryError) {
+                    Log.w(TAG, "hero OOM, fallback to sample=2")
+                    try {
+                        val opts = BitmapFactory.Options()
+                        opts.inScaled = false
+                        opts.inSampleSize = 2
+                        bmp = BitmapFactory.decodeResource(res, R.drawable.hero_bg, opts)
+                    } catch (e2: Throwable) {
+                        bmp = null
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "hero decode failed", e)
+                }
+                val result = bmp
+                if (result != null) {
+                    mainHandler.post {
+                        if (!destroyed) {
+                            val d = BitmapDrawable(res, result)
+                            d.setFilterBitmap(true)
+                            heroBg.setImageDrawable(d)
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            // executor уже остановлен
         }
     }
 
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density + 0.5f).toInt()
 
     companion object {
+        private const val TAG = "WhiteHole"
+        private const val TAG_ADD = "action:add"
+        private const val MENU_LEFT = 1
+        private const val MENU_RIGHT = 2
+        private const val MENU_REMOVE = 3
+        private const val MENU_CANCEL = 4
         private const val BOT_LINK = "https://t.me/WhiteHoleVPNbot?start=src_tv"
     }
 }
