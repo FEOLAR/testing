@@ -56,6 +56,10 @@ class Favorites(context: Context) {
             "com.google.android.youtube.tv",
             "ru.kinopoisk.yandex.tv",
             "ru.kinopoisk.tv",
+            "su.happ.proxyutility",
+            "com.happproxy",
+            "com.happ.proxy",
+            "su.happ.proxy",
             "ru.ivi.client",
             "ru.more.play",
             "ru.rt.video.app.tv",
@@ -63,9 +67,6 @@ class Favorites(context: Context) {
             "com.vk.tv",
             "ru.rutube.app",
             "ru.mts.mtstv",
-            "com.happproxy",
-            "com.happ.proxy",
-            "su.happ.proxy",
             "com.yandex.tv.music",
             "com.yandex.browser.tv"
         )

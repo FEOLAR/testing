@@ -17,7 +17,7 @@ class AppEntry(
 
 object AppRepository {
 
-    val HAPP_PACKAGES: List<String> = listOf("com.happproxy", "com.happ.proxy", "su.happ.proxy")
+    val HAPP_PACKAGES: List<String> = listOf("su.happ.proxyutility", "com.happproxy", "com.happ.proxy", "su.happ.proxy")
 
     /** Системный и заводской мусор, который не показываем нигде. */
     private val EXCLUDED: Set<String> = setOf(
