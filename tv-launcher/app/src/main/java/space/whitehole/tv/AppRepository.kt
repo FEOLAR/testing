@@ -24,18 +24,44 @@ object AppRepository {
 
     /** Системный и заводской мусор, который не показываем нигде. */
     private val EXCLUDED: Set<String> = setOf(
+        // Яндекс ТВ: свой лаунчер и мастер настройки
         "com.yandex.tv.home",
         "com.yandex.tv.setupwizard",
+        // штатные лаунчеры разных платформ (сами себя показывать незачем)
+        "com.google.android.tvlauncher",
+        "com.google.android.apps.tv.launcherx",
+        "com.google.android.leanbacklauncher",
+        "com.google.android.apps.nexuslauncher",
+        "com.android.launcher",
+        "com.android.launcher2",
+        "com.android.launcher3",
+        "com.mitv.tvhome",
+        "com.amazon.tv.launcher",
+        "com.android.provision",
+        // мусор, найденный на тестовом Tuvio
         "com.cvte.fac.menu",
         "com.changhong.factory.at",
         "com.dimowner.audiorecorder.debug"
     )
     private val EXCLUDED_PREFIXES: List<String> = listOf("com.cvte.factory")
 
+    /** Части имени пакета, по которым узнаём заводские/тестовые меню и мастера первичной настройки. */
+    private val EXCLUDED_PARTS: List<String> = listOf(
+        "factory",
+        ".fac.menu",
+        "factorytest",
+        "setupwizard",
+        "setupwraith"
+    )
+
     fun isExcluded(pkg: String): Boolean {
         if (EXCLUDED.contains(pkg)) return true
         for (p in EXCLUDED_PREFIXES) {
             if (pkg == p || pkg.startsWith("$p.")) return true
+        }
+        val lower = pkg.lowercase(Locale.ROOT)
+        for (part in EXCLUDED_PARTS) {
+            if (lower.contains(part)) return true
         }
         return false
     }

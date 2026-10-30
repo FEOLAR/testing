@@ -77,15 +77,20 @@ class Favorites(context: Context) {
     companion object {
         private const val KEY = "favorites"
         private const val DEFAULT_COUNT = 10
+        /** Порядок по умолчанию. Пакеты, которых нет на устройстве, просто пропускаются. */
         private val KNOWN: List<String> = listOf(
+            // YouTube (Яндекс ТВ / Android TV / Google TV)
             "com.yandex.tv.ytplayer",
             "com.google.android.youtube.tv",
+            // Кинопоиск
             "ru.kinopoisk.yandex.tv",
             "ru.kinopoisk.tv",
+            // Happ
             "su.happ.proxyutility",
             "com.happproxy",
             "com.happ.proxy",
             "su.happ.proxy",
+            // российские онлайн-кинотеатры и ТВ
             "ru.ivi.client",
             "ru.more.play",
             "ru.rt.video.app.tv",
@@ -93,6 +98,16 @@ class Favorites(context: Context) {
             "com.vk.tv",
             "ru.rutube.app",
             "ru.mts.mtstv",
+            "ru.start.tv",
+            "ru.start.androidmobile",
+            "gpm.tnt_premier",
+            // зарубежные сервисы
+            "com.netflix.ninja",
+            "com.amazon.amazonvideo.livingroom",
+            "com.disney.disneyplus",
+            "com.google.android.youtube.tvkids",
+            "org.xbmc.kodi",
+            // Яндекс: музыка и браузер — в конце
             "com.yandex.tv.music",
             "com.yandex.browser.tv"
         )

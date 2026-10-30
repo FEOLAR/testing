@@ -90,4 +90,7 @@
     <string name="renew_qr_desc">QR-код для продления подписки в Telegram-боте</string>
     <string name="me_loading">Загружаю…</string>
     <string name="me_failed">Нет связи с сервером — показаны последние данные</string>
+    <string name="not_home_chip">Не главный экран — нажми, чтобы сделать</string>
+    <string name="btn_make_home">Сделать главным экраном</string>
+    <string name="make_home_note">Выбери WhiteHole в настройках главного экрана. На Google TV это может быть недоступно — тогда открывай WhiteHole из списка приложений.</string>
 </resources>

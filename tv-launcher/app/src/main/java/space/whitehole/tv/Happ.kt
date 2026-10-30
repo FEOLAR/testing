@@ -89,7 +89,11 @@ object Happ {
                     continue
                 }
                 if (code !in 200..299) return null
-                val total = conn.contentLengthLong
+                val total: Long = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    conn.contentLengthLong
+                } else {
+                    conn.contentLength.toLong()
+                }
                 var done = 0L
                 var last = -1
                 conn.inputStream.use { input ->
@@ -129,8 +133,21 @@ object Happ {
 
     /** Запустить установщик Android для скачанного APK. */
     fun install(context: Context, file: File): Boolean {
+        // Установщик Android 5–6 не умеет content://, только file:// — открываем файл на чтение всем
+        val uri: Uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            ApkProvider.uriFor(file.name)
+        } else {
+            try {
+                file.parentFile?.setExecutable(true, false)
+                file.parentFile?.setReadable(true, false)
+                file.setReadable(true, false)
+            } catch (e: Exception) {
+                // ignore
+            }
+            Uri.fromFile(file)
+        }
         val intent = Intent(Intent.ACTION_VIEW)
-            .setDataAndType(ApkProvider.uriFor(file.name), ApkProvider.MIME)
+            .setDataAndType(uri, ApkProvider.MIME)
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
         return try {
             context.startActivity(intent)

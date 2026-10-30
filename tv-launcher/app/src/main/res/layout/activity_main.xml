@@ -111,6 +111,14 @@
                     <LinearLayout
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:clipChildren="false"
+                        android:clipToPadding="false"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
                         android:background="@drawable/chip_bg"
                         android:gravity="center_vertical"
                         android:orientation="horizontal"
@@ -133,6 +141,20 @@
                             android:text="@string/status_off"
                             android:textColor="@color/white"
                             android:textSize="14sp" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/not_home_chip"
+                        style="@style/WhTab"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginLeft="12dp"
+                        android:minHeight="30dp"
+                        android:paddingLeft="14dp"
+                        android:paddingRight="14dp"
+                        android:text="@string/not_home_chip"
+                        android:textSize="13sp"
+                        android:visibility="gone" />
                     </LinearLayout>
 
                     <TextView
@@ -420,6 +442,25 @@
                             android:layout_height="wrap_content"
                             android:text="@string/btn_back" />
                     </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/make_home_note"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:text="@string/make_home_note"
+                        android:textColor="@color/text_muted"
+                        android:textSize="13sp"
+                        android:visibility="gone" />
+
+                    <TextView
+                        android:id="@+id/btn_make_home"
+                        style="@style/WhButton"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:text="@string/btn_make_home"
+                        android:visibility="gone" />
                 </LinearLayout>
             </LinearLayout>
         </FrameLayout>

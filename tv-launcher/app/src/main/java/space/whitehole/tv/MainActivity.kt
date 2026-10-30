@@ -1,10 +1,12 @@
 package space.whitehole.tv
 
 import android.app.Activity
+import android.app.ActivityManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
@@ -106,6 +108,11 @@ class MainActivity : Activity() {
     private var qrBuiltSize = 0
     private var pickMode = false
     private var menuPkg: String? = null
+    private var longPressFired = false
+    private var confirmDownView: View? = null
+    private lateinit var notHomeChip: TextView
+    private lateinit var makeHomeNote: TextView
+    private lateinit var btnMakeHome: TextView
 
     private lateinit var heroBg: ImageView
     private lateinit var dim: View
@@ -174,6 +181,19 @@ class MainActivity : Activity() {
         }
     }
 
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(newBase)
+        // Один и тот же вид (960×540 dp) на 720p/1080p/4K и на нестандартных плотностях
+        val o = UiScale.overrideFor(newBase)
+        if (o != null) {
+            try {
+                applyOverrideConfiguration(o)
+            } catch (e: Exception) {
+                // уже поздно переопределять — работаем с системной плотностью
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -213,6 +233,13 @@ class MainActivity : Activity() {
         menuRemove.setOnClickListener { onMenuAction(MENU_REMOVE) }
         menuCancel.setOnClickListener { onMenuAction(MENU_CANCEL) }
         tileMenu.setOnClickListener { hideTileMenu(true) }
+        notHomeChip = findViewById(R.id.not_home_chip)
+        makeHomeNote = findViewById(R.id.make_home_note)
+        btnMakeHome = findViewById(R.id.btn_make_home)
+        notHomeChip.setOnClickListener { openHomeSettings() }
+        btnMakeHome.setOnClickListener { openHomeSettings() }
+        setupFocusAnim(notHomeChip, 1.06f)
+        setupFocusAnim(btnMakeHome, 1.06f)
         session = Session(this)
         mainContent = findViewById(R.id.content)
         btnSub = findViewById(R.id.btn_sub)
@@ -307,6 +334,7 @@ class MainActivity : Activity() {
         updateVpnStatus()
         reloadApps()
         resumed = true
+        updateDefaultHomeUi()
         updateHomeUi()
         refreshMe(false)
         if (page == Page.PAIR && !pairDone) {
@@ -352,6 +380,54 @@ class MainActivity : Activity() {
         favScroll.scrollTo(0, 0)
     }
 
+    // Геймпад: B = «Назад» (на случай, если система не переводит B в BACK сама)
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_BUTTON_B) return true
+        return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_BUTTON_B) {
+            onBackPressed()
+            return true
+        }
+        return super.onKeyUp(keyCode, event)
+    }
+
+    // ---------- Главный экран системы ----------
+
+    /** Мы ли сейчас домашний экран по умолчанию. */
+    private fun isDefaultHome(): Boolean {
+        return try {
+            val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+            val ri = packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)
+            ri?.activityInfo?.packageName == packageName
+        } catch (e: Exception) {
+            true
+        }
+    }
+
+    private fun updateDefaultHomeUi() {
+        val isHome = isDefaultHome()
+        notHomeChip.visibility = if (isHome) View.GONE else View.VISIBLE
+        makeHomeNote.visibility = if (isHome) View.GONE else View.VISIBLE
+        btnMakeHome.visibility = if (isHome) View.GONE else View.VISIBLE
+    }
+
+    /** Настройки «Главный экран», если есть; иначе общие настройки. */
+    private fun openHomeSettings() {
+        val home = Intent(Settings.ACTION_HOME_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            if (home.resolveActivity(packageManager) != null) {
+                startActivity(home)
+                return
+            }
+        } catch (e: Exception) {
+            // нет такого экрана
+        }
+        openSettings()
+    }
+
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         // На главном экране «Назад» ничего не делает (мы — домашний экран)
@@ -388,7 +464,10 @@ class MainActivity : Activity() {
         appsHint.setTextColor(if (pickMode) Color.WHITE else Color.parseColor("#8A8F99"))
         dim.animate().alpha(if (p == Page.HOME) 0f else 0.82f).setDuration(200).start()
 
-        if (p == Page.HELP) updateHelpButtons()
+        if (p == Page.HELP) {
+            updateHelpButtons()
+            updateDefaultHomeUi()
+        }
         if (p == Page.HOME) updateHomeUi()
         if (p == Page.SUB) {
             bindSub()
@@ -628,15 +707,59 @@ class MainActivity : Activity() {
             onTileLongPress(app, inHomeRow)
             true
         }
-        tile.setOnKeyListener { _, keyCode, event ->
-            if (keyCode == KeyEvent.KEYCODE_MENU) {
-                if (event.action == KeyEvent.ACTION_UP) onTileLongPress(app, inHomeRow)
-                true
-            } else {
-                false
-            }
+        tile.setOnKeyListener { v, keyCode, event ->
+            handleTileKey(v, keyCode, event) { onTileLongPress(app, inHomeRow) }
         }
         setupFocusAnim(tile, 1.06f)
+    }
+
+    /**
+     * Кнопки пульта/геймпада на плитке приложения.
+     * ОК (DPAD_CENTER / ENTER / NUMPAD_ENTER / геймпад A): короткое — открыть, удержание ≥0,5 с — меню.
+     * Удержание ловим и по автоповтору, и по длительности при отпускании (у пультов без автоповтора).
+     * «Меню» — то же, что удержание.
+     */
+    private fun handleTileKey(v: View, keyCode: Int, event: KeyEvent, onLong: () -> Unit): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_MENU) {
+            if (event.action == KeyEvent.ACTION_UP) onLong()
+            return true
+        }
+        val confirm = keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER ||
+            keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER || keyCode == KeyEvent.KEYCODE_BUTTON_A
+        if (!confirm) return false
+        when (event.action) {
+            KeyEvent.ACTION_DOWN -> {
+                if (event.repeatCount == 0) {
+                    longPressFired = false
+                    confirmDownView = v
+                } else if (!longPressFired && confirmDownView === v &&
+                    event.eventTime - event.downTime >= LONG_PRESS_MS
+                ) {
+                    longPressFired = true
+                    onLong()
+                }
+                return true
+            }
+            KeyEvent.ACTION_UP -> {
+                val wasDown = confirmDownView === v
+                confirmDownView = null
+                if (!wasDown || event.isCanceled) return true
+                if (longPressFired) {
+                    longPressFired = false
+                    return true
+                }
+                if (event.eventTime - event.downTime >= LONG_PRESS_MS) {
+                    onLong()
+                } else {
+                    v.performClick()
+                }
+                return true
+            }
+            else -> {
+                // другие действия не обрабатываем
+            }
+        }
+        return false
     }
 
     private fun onTileLongPress(app: AppEntry, inHomeRow: Boolean) {
@@ -784,6 +907,8 @@ class MainActivity : Activity() {
 
     private fun registerVpnCallback() {
         val cm = connectivity ?: return
+        // removeCapability(NOT_VPN) есть только с Android 6; на 5.x статус обновляется в onResume
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
         try {
             val request = NetworkRequest.Builder()
                 .addTransportType(NetworkCapabilities.TRANSPORT_VPN)
@@ -1273,11 +1398,14 @@ class MainActivity : Activity() {
             real.setTo(resources.displayMetrics)
         }
         val dm = resources.displayMetrics
-        val mode = try {
-            val m = windowManager.defaultDisplay.mode
-            "${m.physicalWidth}x${m.physicalHeight}@${m.refreshRate}"
-        } catch (e: Exception) {
-            "?"
+        var mode = "?"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
+                val m = windowManager.defaultDisplay.mode
+                mode = "${m.physicalWidth}x${m.physicalHeight}@${m.refreshRate}"
+            } catch (e: Exception) {
+                // ignore
+            }
         }
         Log.i(
             TAG,
@@ -1294,8 +1422,14 @@ class MainActivity : Activity() {
      */
     private fun loadHeroBackground(screenW: Int, screenH: Int) {
         val res = resources
-        val sw = if (screenW > 0) screenW else 1920
-        val sh = if (screenH > 0) screenH else 1080
+        var sw = if (screenW > 0) screenW else 1920
+        var sh = if (screenH > 0) screenH else 1080
+        // Слабые приставки: фон не больше 1280×720
+        val lowRam = isLowMemoryDevice()
+        if (lowRam) {
+            sw = minOf(sw, 1280)
+            sh = minOf(sh, 720)
+        }
         try {
             io.execute {
                 var bmp: Bitmap? = null
@@ -1313,7 +1447,14 @@ class MainActivity : Activity() {
                     opts.inPreferredConfig = Bitmap.Config.ARGB_8888
                     opts.inSampleSize = sample
                     bmp = BitmapFactory.decodeResource(res, R.drawable.hero_bg, opts)
-                    Log.i(TAG, "hero ${bounds.outWidth}x${bounds.outHeight} sample=$sample -> ${bmp?.width}x${bmp?.height}")
+                    val decoded = bmp
+                    if (lowRam && decoded != null && decoded.width > sw * 5 / 4) {
+                        val th = decoded.height * sw / decoded.width
+                        val scaled = Bitmap.createScaledBitmap(decoded, sw, th, true)
+                        if (scaled != decoded) decoded.recycle()
+                        bmp = scaled
+                    }
+                    Log.i(TAG, "lowRam=$lowRam hero ${bounds.outWidth}x${bounds.outHeight} sample=$sample -> ${bmp?.width}x${bmp?.height}")
                 } catch (e: OutOfMemoryError) {
                     Log.w(TAG, "hero OOM, fallback to sample=2")
                     try {
@@ -1349,11 +1490,21 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun isLowMemoryDevice(): Boolean {
+        return try {
+            val am = getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager ?: return false
+            am.isLowRamDevice || am.memoryClass < 128
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density + 0.5f).toInt()
 
     companion object {
         private const val TAG = "WhiteHole"
         private const val TAG_ADD = "action:add"
+        private const val LONG_PRESS_MS = 500L
         private const val MENU_LEFT = 1
         private const val MENU_RIGHT = 2
         private const val MENU_REMOVE = 3
