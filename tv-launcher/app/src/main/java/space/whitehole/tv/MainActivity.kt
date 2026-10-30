@@ -96,6 +96,22 @@ class MainActivity : Activity() {
     private var lastInputsSig = "?"
     private var weatherLoading = false
     private var dateFormat = SimpleDateFormat("EE, d MMM", Locale("ru"))
+
+    // пинг и напоминание о продлении
+    private lateinit var pingCard: View
+    private lateinit var pingDot: View
+    private lateinit var pingText: TextView
+    private lateinit var renewCard: View
+    private lateinit var renewTitle: TextView
+    private lateinit var subDeviceList: TextView
+    private var pingRunning = false
+    private var renewQrDone = false
+    private val pingTick = object : Runnable {
+        override fun run() {
+            measurePing()
+            mainHandler.postDelayed(this, 60_000L)
+        }
+    }
     private val idleCheck = object : Runnable {
         override fun run() {
             checkIdle()
@@ -305,6 +321,19 @@ class MainActivity : Activity() {
         inputsLabel = findViewById(R.id.inputs_label)
         inputsScroll = findViewById(R.id.inputs_scroll)
         inputsRow = findViewById(R.id.inputs_row)
+        pingCard = findViewById(R.id.ping_card)
+        pingDot = findViewById(R.id.ping_dot)
+        pingText = findViewById(R.id.ping_text)
+        renewCard = findViewById(R.id.renew_card)
+        renewTitle = findViewById(R.id.renew_title)
+        subDeviceList = findViewById(R.id.sub_device_list)
+        val btnRenewHide = findViewById<TextView>(R.id.btn_renew_hide)
+        btnRenewHide.setOnClickListener {
+            prefs.renewDismissedAt = System.currentTimeMillis()
+            renewCard.visibility = View.GONE
+            btnConnect.requestFocus()
+        }
+        setupFocusAnim(btnRenewHide, 1.06f)
         btnContinue.setOnClickListener {
             val last = prefs.recents().firstOrNull { p -> apps.any { it.packageName == p } }
             if (last != null) launchApp(last)
@@ -424,6 +453,8 @@ class MainActivity : Activity() {
         lastInputAt = System.currentTimeMillis()
         mainHandler.removeCallbacks(idleCheck)
         mainHandler.postDelayed(idleCheck, 20_000L)
+        mainHandler.removeCallbacks(pingTick)
+        mainHandler.post(pingTick)
         updateVpnStatus()
         updateBlackHoleRunning()
         updateDefaultHomeUi()
@@ -438,6 +469,7 @@ class MainActivity : Activity() {
         super.onPause()
         resumed = false
         mainHandler.removeCallbacks(idleCheck)
+        mainHandler.removeCallbacks(pingTick)
         hideIdle()
         updateBlackHoleRunning()
         mainHandler.removeCallbacks(clockTick)
@@ -1134,6 +1166,86 @@ class MainActivity : Activity() {
         }
     }
 
+    // ---------- Пинг, продление, устройства ----------
+
+    private fun measurePing() {
+        if (pingRunning || page != Page.HOME || !resumed) return
+        pingRunning = true
+        if (pingCard.visibility != View.VISIBLE) {
+            pingText.setText(R.string.ping_measuring)
+            pingDot.setBackgroundResource(R.drawable.dot_grey)
+            pingCard.visibility = View.VISIBLE
+        }
+        try {
+            io.execute {
+                val ms = Ping.measure()
+                mainHandler.post {
+                    pingRunning = false
+                    if (destroyed) return@post
+                    if (ms >= 0) {
+                        pingText.text = getString(R.string.ping_ms, ms)
+                        pingDot.setBackgroundResource(if (ms < 150) R.drawable.dot_green else R.drawable.dot_yellow)
+                    } else {
+                        pingText.setText(R.string.ping_fail)
+                        pingDot.setBackgroundResource(R.drawable.dot_red)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            pingRunning = false
+        }
+    }
+
+    /** Мягкое напоминание на главной: осталось ≤3 дней или подписка закончилась. Скрывается на сутки. */
+    private fun updateRenewBanner() {
+        if (!::renewCard.isInitialized) return
+        val me = if (session.paired) session.me else null
+        var show = false
+        if (me != null && !isKidsMode()) {
+            val status = me.optString("status", "")
+            val days = me.optInt("days_left", 0)
+            val dismissed = System.currentTimeMillis() - prefs.renewDismissedAt < 24L * 3600_000L
+            if (!dismissed) {
+                if (status == "ACTIVE" && days <= 3) {
+                    renewTitle.text = if (days <= 0) getString(R.string.renew_today) else getString(R.string.renew_soon, days)
+                    show = true
+                } else if (status == "EXPIRED" || status == "DISABLED" || status == "LIMITED") {
+                    renewTitle.setText(R.string.renew_expired)
+                    show = true
+                }
+            }
+        }
+        if (show && !renewQrDone) {
+            setQr(findViewById(R.id.renew_qr), Api.RENEW_LINK, dp(80))
+            renewQrDone = true
+        }
+        renewCard.visibility = if (show) View.VISIBLE else View.GONE
+    }
+
+    /** Список устройств подписки на экране «Подписка» (поле devices из /tv/me). */
+    private fun bindDeviceList(me: JSONObject?) {
+        val arr = me?.optJSONArray("devices")
+        if (arr == null || arr.length() == 0) {
+            subDeviceList.visibility = View.GONE
+            return
+        }
+        val sb = StringBuilder(getString(R.string.devices_title))
+        for (i in 0 until minOf(arr.length(), 8)) {
+            val d = arr.optJSONObject(i) ?: continue
+            val model = d.optString("model", "").let { if (it == "null") "" else it.trim() }
+            val platform = d.optString("platform", "").let { if (it == "null") "" else it.trim() }
+            val os = d.optString("os_version", "").let { if (it == "null") "" else it.trim() }
+            val sys = listOf(platform, os).filter { it.isNotEmpty() }.joinToString(" ")
+            val name = listOf(model, sys).filter { it.isNotEmpty() }.joinToString(" · ").ifEmpty { "Устройство" }
+            val since = formatDate(d.optString("created_at", "")) ?: "—"
+            val seen = formatDate(d.optString("updated_at", ""))
+            sb.append('\n')
+            sb.append(if (seen != null && seen != since) getString(R.string.device_line_seen, name, since, seen) else getString(R.string.device_line, name, since))
+        }
+        subDeviceList.text = sb.toString()
+        subDeviceList.visibility = View.VISIBLE
+    }
+
     /** Детский режим (подключается отдельно). */
     private fun isKidsMode(): Boolean = false
 
@@ -1211,6 +1323,7 @@ class MainActivity : Activity() {
             btnSub.visibility = View.GONE
             subLine.visibility = View.GONE
         }
+        updateRenewBanner()
     }
 
     private fun subLineText(me: JSONObject): String? {
@@ -1259,6 +1372,7 @@ class MainActivity : Activity() {
     // ---------- Экран «Подписка» ----------
 
     private fun bindSub() {
+        bindDeviceList(session.me)
         val me = session.me
         if (me == null) {
             subPlan.setText(R.string.plan_regular)

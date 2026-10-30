@@ -118,4 +118,15 @@
     <string name="btn_continue">Продолжить: %1$s</string>
     <string name="input_failed">Не удалось открыть вход — на этом устройстве нет приложения «ТВ»</string>
     <string name="recent_removed">«%1$s» убрано из недавних</string>
+    <string name="renew_soon">Подписка заканчивается через %1$d дн.</string>
+    <string name="renew_today">Подписка заканчивается сегодня</string>
+    <string name="renew_expired">Подписка закончилась</string>
+    <string name="renew_banner_hint">Наведи камеру — продление в боте</string>
+    <string name="renew_hide">Скрыть на сутки</string>
+    <string name="ping_ms">Пинг до сервера: %1$d мс</string>
+    <string name="ping_fail">Сервер не отвечает</string>
+    <string name="ping_measuring">Пинг до сервера: измеряю…</string>
+    <string name="devices_title">Устройства в подписке:</string>
+    <string name="device_line">• %1$s — с %2$s</string>
+    <string name="device_line_seen">• %1$s — с %2$s, был(о) в сети %3$s</string>
 </resources>
