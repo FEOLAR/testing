@@ -116,4 +116,18 @@ class XrayConfigBuilderTest {
         assertTrue(XrayConfigBuilder.isIp("203.0.113.10"))
         assertFalse(XrayConfigBuilder.isIp("node.example.org"))
     }
+
+    @Test
+    fun geoFileMissingConfigHasNoGeoRules() {
+        // geoip.dat не на диске → CoreOptions(geoipRu = false): ни одного geoip:/geosite:, домены и подсети на месте
+        for (l in listOf(tcp, parse("vless://$uuid@node.example.org:8443?security=reality&type=xhttp&path=%2Fx&sni=s&pbk=P&sid=1#x"))) {
+            val text = XrayConfigBuilder.build(l, CoreOptions(geoipRu = false))
+            assertFalse(text.contains("geoip:"))
+            assertFalse(text.contains("geosite:"))
+            val rules = JSONObject(text).getJSONObject("routing").getJSONArray("rules").objects()
+            assertTrue(rules.any { it.optJSONArray("domain")?.strings()?.contains("domain:ru") == true && it.getString("outboundTag") == "direct" })
+            assertTrue(rules.any { it.optJSONArray("ip")?.strings()?.contains("77.88.8.8/32") == true && it.getString("outboundTag") == "direct" })
+            assertTrue(rules.any { it.optJSONArray("ip")?.strings()?.contains("192.168.0.0/16") == true })
+        }
+    }
 }

@@ -7,6 +7,7 @@ import libv2ray.CoreCallbackHandler
 import libv2ray.CoreController
 import libv2ray.Libv2ray
 import space.whitehole.tv.Api
+import space.whitehole.tv.BuildConfig
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -31,7 +32,7 @@ object XrayCore {
         if (controller != null) return
         val app = ctx.applicationContext
         Seq.setContext(app)
-        // Xray ищет geoip.dat сначала в этой папке (скачанный), потом в assets APK
+        // Xray читает geoip.dat из этой папки (GeoData.ensure кладёт его туда до init)
         Libv2ray.initCoreEnv(GeoData.dir(app).absolutePath, "")
         controller = Libv2ray.newCoreController(object : CoreCallbackHandler {
             override fun startup(): Long = 0
@@ -54,12 +55,17 @@ object XrayCore {
      * Проверка сервера без tun: отдельный экземпляр ядра, запрос к generate_204 через прокси.
      * Задержка в мс или -1. Не ждём дольше [timeoutSec] (ядро само закроет зависший экземпляр).
      */
+    /** Текст последней ошибки проверки (например, «failed to open geoip.dat»). */
+    @Volatile var lastTestError: String = ""
+
     fun test(config: String, timeoutSec: Long = 10): Long {
+        lastTestError = ""
         val f = testPool.submit(Callable {
             try {
                 Libv2ray.measureOutboundDelay(config, TEST_URL)
             } catch (e: Throwable) {
                 Log.w(TAG, "test failed: ${e.message}")
+                lastTestError = e.message ?: ""
                 -1L
             }
         })
@@ -98,32 +104,62 @@ object XrayCore {
 }
 
 /**
- * Компактная geoip.dat (только RU, ≈0,4 МБ) — кладётся в assets при сборке в CI
- * (https://77-91-95-53.sslip.io:9443/miniapp/geoip.dat). Если в APK её нет — скачиваем при подключении.
+ * Компактная geoip.dat (только RU, ≈0,4 МБ). В APK лежит в assets (кладёт CI). Ядро Xray читает файл
+ * только с диска (xray.location.asset = [dir]), поэтому перед проверками и запуском ядра файл синхронно
+ * копируется из assets в filesDir/vpn/geo/geoip.dat (в процессе :vpn). Нет в APK — скачиваем с сервера.
+ * geoip:ru используется ТОЛЬКО если этот файл реально есть на диске; иначе конфиг без geoip-правил.
  */
 object GeoData {
     private const val TAG = "WhVpnGeo"
     private const val RETRY_MS = 60 * 60 * 1000L
+    private const val MIN_SIZE = 10_000L
+    private const val NAME = "geoip.dat"
 
     fun dir(ctx: Context): File = File(VpnFiles.dir(ctx), "geo").also { it.mkdirs() }
 
-    private fun assetExists(ctx: Context, name: String): Boolean = try {
-        ctx.assets.open(name).use { it.read() >= 0 }
-    } catch (e: Exception) {
-        false
+    fun file(ctx: Context): File = File(dir(ctx), NAME)
+
+    /** Ровно тот файл, который откроет ядро. */
+    fun available(ctx: Context): Boolean = file(ctx).let { it.isFile && it.length() > MIN_SIZE }
+
+    /** true — geoip:ru можно использовать в правилах. Вызывать до XrayCore.init/test/start. */
+    @Synchronized
+    fun ensure(ctx: Context): Boolean {
+        val f = file(ctx)
+        val ver = BuildConfig.VERSION_CODE.toString()
+        // копия из APK: при первом запуске и после обновления приложения (новая версия базы)
+        if (!available(ctx) || VpnFiles.read(ctx, "geo_ver") != ver) {
+            if (extractAsset(ctx, f)) VpnFiles.write(ctx, "geo_ver", ver)
+        }
+        if (!available(ctx)) {
+            val last = VpnFiles.read(ctx, "geo_fail_at")?.trim()?.toLongOrNull() ?: 0L
+            if (System.currentTimeMillis() - last !in 0..RETRY_MS) {
+                val ok = download(ctx, Api.url("/miniapp/geoip.dat"), f)
+                if (!ok) VpnFiles.write(ctx, "geo_fail_at", System.currentTimeMillis().toString())
+            }
+        }
+        val ok = available(ctx)
+        Log.i(TAG, "geoip: ${f.absolutePath} exists=${f.isFile} size=${f.length()} use=$ok")
+        return ok
     }
 
-    fun available(ctx: Context): Boolean =
-        File(dir(ctx), "geoip.dat").length() > 10_000 || assetExists(ctx, "geoip.dat")
-
-    /** true — geoip:ru можно использовать в правилах. */
-    fun ensure(ctx: Context): Boolean {
-        if (available(ctx)) return true
-        val last = VpnFiles.read(ctx, "geo_fail_at")?.trim()?.toLongOrNull() ?: 0L
-        if (System.currentTimeMillis() - last in 0..RETRY_MS) return false
-        val ok = download(ctx, Api.url("/miniapp/geoip.dat"), File(dir(ctx), "geoip.dat"))
-        if (!ok) VpnFiles.write(ctx, "geo_fail_at", System.currentTimeMillis().toString())
-        return ok && available(ctx)
+    private fun extractAsset(ctx: Context, out: File): Boolean {
+        val tmp = File(out.parentFile, "$NAME.part")
+        return try {
+            ctx.assets.open(NAME).use { input -> tmp.outputStream().use { input.copyTo(it) } }
+            if (tmp.length() <= MIN_SIZE) {
+                Log.w(TAG, "asset $NAME too small: ${tmp.length()}")
+                false
+            } else {
+                out.delete()
+                tmp.renameTo(out) && out.length() > MIN_SIZE
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "no $NAME in APK assets: ${e.javaClass.simpleName}")
+            false
+        } finally {
+            tmp.delete()
+        }
     }
 
     private fun download(ctx: Context, url: String, out: File): Boolean {
@@ -136,7 +172,7 @@ object GeoData {
             conn.setRequestProperty("Accept", "*/*")
             if (conn.responseCode !in 200..299) return false
             conn.inputStream.use { input -> tmp.outputStream().use { input.copyTo(it) } }
-            if (tmp.length() < 10_000) return false
+            if (tmp.length() <= MIN_SIZE) return false
             out.delete()
             tmp.renameTo(out)
         } catch (e: Exception) {
