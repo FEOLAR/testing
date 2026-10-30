@@ -56,15 +56,19 @@ class WhiteHoleVpnService : VpnService() {
 
         companion object {
             fun from(i: Intent?): Request? {
-                val sub = i?.getStringExtra(EXTRA_SUB_URL)?.takeIf { it.isNotEmpty() } ?: return null
+                if (i == null) return null
+                val sub = i.getStringExtra(EXTRA_SUB_URL)?.takeIf { it.isNotEmpty() } ?: return null
                 return Request(sub, i.getStringExtra(EXTRA_SERVER) ?: ServerCatalog.AUTO_KEY)
             }
 
-            fun load(ctx: Context): Request? = try {
-                val j = JSONObject(VpnFiles.read(ctx, LAST_START) ?: return null)
-                j.optString("sub").takeIf { it.isNotEmpty() }?.let { Request(it, j.optString("server", "")) }
-            } catch (e: Exception) {
-                null
+            fun load(ctx: Context): Request? {
+                val text = VpnFiles.read(ctx, LAST_START) ?: return null
+                return try {
+                    val j = JSONObject(text)
+                    j.optString("sub").takeIf { it.isNotEmpty() }?.let { Request(it, j.optString("server", "")) }
+                } catch (e: Exception) {
+                    null
+                }
             }
         }
     }
