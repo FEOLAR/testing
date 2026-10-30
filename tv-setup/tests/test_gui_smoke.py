@@ -16,6 +16,19 @@ from test_core import FakeTV, make_engine  # noqa: E402
 from whitehole_setup import gui  # noqa: E402
 
 
+def make_app(*args, **kwargs):
+    """На раннерах windows-latest создание Tk иногда случайно падает с «Can't find a usable tk.tcl»
+    (известная нестабильность окружения при многократном Tk()). Повторяем — к программе не относится."""
+    import tkinter
+    for attempt in range(5):
+        try:
+            return gui.App(*args, **kwargs)
+        except tkinter.TclError as e:
+            if "tk.tcl" not in str(e) or attempt == 4:
+                raise
+            time.sleep(0.5)
+
+
 def pump(app, cond=lambda: False, timeout=5.0):
     end = time.time() + timeout
     while time.time() < end:
@@ -57,7 +70,7 @@ def test_busy_released_after_crash_in_scan(tmp_path, quiet_boxes):
     def boom(**kw):
         raise RuntimeError("сеть сломалась")
     eng.discover = boom
-    app = gui.App(engine=eng, start_adb=False)
+    app = make_app(engine=eng, start_adb=False)
     try:
         app.on_scan()
         assert pump(app, lambda: not app._busy)
@@ -69,7 +82,7 @@ def test_busy_released_after_crash_in_scan(tmp_path, quiet_boxes):
 
 def test_busy_released_on_setup_error_and_os_error(tmp_path, quiet_boxes):
     eng = make_engine(tmp_path, FakeTV())
-    app = gui.App(engine=eng, start_adb=False)
+    app = make_app(engine=eng, start_adb=False)
     try:
         for exc in (gui.SetupError("нет", "x"), OSError("socket"), KeyboardInterrupt()):
             def work(e=exc):
@@ -84,7 +97,7 @@ def test_busy_released_on_setup_error_and_os_error(tmp_path, quiet_boxes):
 def test_watchdog_releases_hung_task(tmp_path, quiet_boxes):
     import threading
     eng = make_engine(tmp_path, FakeTV())
-    app = gui.App(engine=eng, start_adb=False)
+    app = make_app(engine=eng, start_adb=False)
     stop = threading.Event()
     timed_out = []
     try:
@@ -113,7 +126,7 @@ def test_scan_cancel_and_manual_ip_always_usable(tmp_path, quiet_boxes):
         return False
     patch_scan(eng, slow_probe)
     eng.clock = _t.monotonic
-    app = gui.App(engine=eng, start_adb=False)
+    app = make_app(engine=eng, start_adb=False)
     try:
         app.on_scan()
         assert pump(app, lambda: started.is_set())
@@ -132,7 +145,7 @@ def test_scan_shows_known_device_immediately(tmp_path, quiet_boxes):
     tv = FakeTV(listed=True)  # ТВ уже в `adb devices`
     eng = make_engine(tmp_path, tv)
     patch_scan(eng, lambda ip: False)
-    app = gui.App(engine=eng, start_adb=False)
+    app = make_app(engine=eng, start_adb=False)
     try:
         app.on_scan()
         assert pump(app, lambda: app.device is not None and not app._busy, 10)
@@ -145,7 +158,7 @@ def test_scan_nothing_found_focuses_manual(tmp_path, quiet_boxes):
     tv = FakeTV(listed=False)
     eng = make_engine(tmp_path, tv)
     patch_scan(eng, lambda ip: False)
-    app = gui.App(engine=eng, start_adb=False)
+    app = make_app(engine=eng, start_adb=False)
     try:
         app.on_scan()
         assert pump(app, lambda: not app._busy, 10)
@@ -162,7 +175,7 @@ def test_window_flow(tmp_path, monkeypatch):
     tv = FakeTV(packages=FakeTV().packages, listed=False)
     eng = make_engine(tmp_path, tv)
     patch_scan(eng)
-    app = gui.App(engine=eng, start_adb=True)
+    app = make_app(engine=eng, start_adb=True)
     try:
         pump(app, lambda: not app._busy)
         for key, *_ in gui.STEPS:
@@ -210,7 +223,7 @@ def test_window_google_tv_optin(tmp_path, monkeypatch):
     monkeypatch.setattr(gui.messagebox, "showerror", lambda *a, **k: None)
     tv = FakeTV(packages=GOOGLE_TV_TCL, stock_wins=True, props={"ro.product.manufacturer": "TCL"})
     eng = make_engine(tmp_path, tv)
-    app = gui.App(engine=eng, start_adb=False)
+    app = make_app(engine=eng, start_adb=False)
     try:
         app._device_ready(eng.device_info("192.168.3.19:5555", "device"))
         assert "Google TV" in app.device_label.cget("text")
