@@ -18,13 +18,13 @@ from whitehole_setup import gui  # noqa: E402
 
 def make_app(*args, **kwargs):
     """На раннерах windows-latest создание Tk иногда случайно падает с «Can't find a usable tk.tcl»
-    (известная нестабильность окружения при многократном Tk()). Повторяем — к программе не относится."""
+    или init.tcl (нестабильность окружения при многократном Tk()). Повторяем — к программе не относится."""
     import tkinter
     for attempt in range(5):
         try:
             return gui.App(*args, **kwargs)
         except tkinter.TclError as e:
-            if "tk.tcl" not in str(e) or attempt == 4:
+            if "usable" not in str(e) or attempt == 4:
                 raise
             time.sleep(0.5)
 
