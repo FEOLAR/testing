@@ -19,6 +19,24 @@ object AppRepository {
 
     val HAPP_PACKAGES: List<String> = listOf("com.happproxy", "com.happ.proxy", "su.happ.proxy")
 
+    /** Системный и заводской мусор, который не показываем нигде. */
+    private val EXCLUDED: Set<String> = setOf(
+        "com.yandex.tv.home",
+        "com.yandex.tv.setupwizard",
+        "com.cvte.fac.menu",
+        "com.changhong.factory.at",
+        "com.dimowner.audiorecorder.debug"
+    )
+    private val EXCLUDED_PREFIXES: List<String> = listOf("com.cvte.factory")
+
+    fun isExcluded(pkg: String): Boolean {
+        if (EXCLUDED.contains(pkg)) return true
+        for (p in EXCLUDED_PREFIXES) {
+            if (pkg == p || pkg.startsWith("$p.")) return true
+        }
+        return false
+    }
+
     /** Все запускаемые приложения (LEANBACK_LAUNCHER + LAUNCHER), без дублей и без нас самих. */
     @Suppress("DEPRECATION")
     fun loadApps(context: Context): List<AppEntry> {
@@ -39,7 +57,7 @@ object AppRepository {
             for (ri in list) {
                 val ai: ActivityInfo = ri.activityInfo ?: continue
                 val pkg = ai.packageName
-                if (pkg == own || result.containsKey(pkg)) continue
+                if (pkg == own || isExcluded(pkg) || result.containsKey(pkg)) continue
                 var label = pkg
                 try {
                     label = ri.loadLabel(pm).toString()

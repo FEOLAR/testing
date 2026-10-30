@@ -50,9 +50,11 @@ class Favorites(context: Context) {
 
     companion object {
         private const val KEY = "favorites"
-        private const val DEFAULT_COUNT = 8
+        private const val DEFAULT_COUNT = 10
         private val KNOWN: List<String> = listOf(
+            "com.yandex.tv.ytplayer",
             "com.google.android.youtube.tv",
+            "ru.kinopoisk.yandex.tv",
             "ru.kinopoisk.tv",
             "ru.ivi.client",
             "ru.more.play",
@@ -60,9 +62,12 @@ class Favorites(context: Context) {
             "com.vk.vkvideo.tv",
             "com.vk.tv",
             "ru.rutube.app",
+            "ru.mts.mtstv",
             "com.happproxy",
             "com.happ.proxy",
-            "su.happ.proxy"
+            "su.happ.proxy",
+            "com.yandex.tv.music",
+            "com.yandex.browser.tv"
         )
     }
 }
