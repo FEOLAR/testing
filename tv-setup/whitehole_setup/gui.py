@@ -16,17 +16,10 @@ import customtkinter as ctk
 from . import VERSION, core, texts
 from .core import DeviceInfo, Engine, SetupError
 
-BG = "#000000"
-PANEL = "#0a0b0e"
-CARD = "#121419"
-BORDER = "#23262d"
-TEXT = "#ffffff"
-MUTED = "#9aa0a6"
-ACCENT = "#34d399"
-ACCENT_HOVER = "#2bb583"
-ACCENT_TEXT = "#04120c"
-WARN = "#fbbf24"
-DANGER = "#f87171"
+from .theme import (ACCENT, ACCENT_HOVER, ACCENT_PRESSED, ACCENT_TEXT, BG, BORDER, DANGER, DANGER_HOVER,
+                    DISABLED_BG, DISABLED_TEXT, FOCUS, LOG_BG, MUTED, PANEL, RAISED, SUCCESS, TEXT, TITLE, WARN)
+
+CARD = RAISED  # карточки и второстепенные кнопки внутри панелей
 
 STEPS = [
     ("find", "Найти телевизор", ""),
@@ -35,6 +28,103 @@ STEPS = [
     ("ads", "Убрать рекламу", "для продвинутых"),
     ("restore", "Вернуть как было", ""),
 ]
+
+
+def set_enabled(widget, enabled: bool) -> None:
+    """Включает/выключает виджет; у голубых кнопок в выключенном виде — серый фон."""
+    try:
+        widget.configure(state="normal" if enabled else "disabled")
+        normal = getattr(widget, "_wh_fill", None)
+        if normal is not None:
+            widget.configure(fg_color=normal if enabled else DISABLED_BG)
+    except Exception:
+        pass  # виджет мог быть уже удалён
+
+
+def accent_button(parent, danger: bool = False, **kw) -> ctk.CTkButton:
+    """Основная кнопка: голубая заливка, тёмный текст, светлее при наведении, темнее при нажатии."""
+    fill = DANGER if danger else ACCENT
+    b = ctk.CTkButton(parent, fg_color=fill, hover_color=DANGER_HOVER if danger else ACCENT_HOVER,
+                      text_color=ACCENT_TEXT, text_color_disabled=DISABLED_TEXT, **kw)
+    b._wh_fill = fill
+    if not danger:
+        def press(_e):
+            if b.cget("state") == "normal":
+                b.configure(fg_color=ACCENT_PRESSED, hover_color=ACCENT_PRESSED)
+
+        def release(_e):
+            if b.cget("state") == "normal":
+                b.configure(fg_color=fill, hover_color=ACCENT_HOVER)
+        b.bind("<ButtonPress-1>", press, add="+")
+        b.bind("<ButtonRelease-1>", release, add="+")
+    return b
+
+
+def focus_ring(entry) -> None:
+    entry.bind("<FocusIn>", lambda e: entry.configure(border_color=FOCUS), add="+")
+    entry.bind("<FocusOut>", lambda e: entry.configure(border_color=BORDER), add="+")
+
+
+class StepRow(ctk.CTkFrame):
+    """Строка шага в боковой колонке: номер/галочка + название (+ пометка).
+    Текущий шаг — голубой, пройденный — голубая галочка, ожидающий — серый."""
+
+    def __init__(self, parent, number: int, name: str, tag: str, font, small_font, command):
+        super().__init__(parent, fg_color="transparent", corner_radius=12, border_width=1, border_color=PANEL,
+                         height=52)
+        self._command = command
+        self._state = "normal"
+        self._number = number
+        self._current = False
+        self.grid_columnconfigure(1, weight=1)
+        self.mark = ctk.CTkLabel(self, text=str(number), width=26, font=font, text_color=MUTED)
+        self.mark.grid(row=0, column=0, rowspan=2, padx=(12, 6), pady=8, sticky="w")
+        self.name = ctk.CTkLabel(self, text=name, font=font, text_color=MUTED, anchor="w")
+        self.name.grid(row=0, column=1, sticky="w", pady=(8 if tag else 12, 0 if tag else 12))
+        self.tag = None
+        if tag:
+            self.tag = ctk.CTkLabel(self, text=tag, font=small_font, text_color=MUTED, anchor="w", height=16)
+            self.tag.grid(row=1, column=1, sticky="w", pady=(0, 8))
+        for w in (self, self.mark, self.name) + ((self.tag,) if self.tag else ()):
+            w.bind("<Button-1>", self._click, add="+")
+            w.bind("<Enter>", lambda e: self._hover(True), add="+")
+            w.bind("<Leave>", lambda e: self._hover(False), add="+")
+
+    def _click(self, _e=None) -> None:
+        if self._state == "normal":
+            self._command()
+
+    def invoke(self) -> None:
+        self._click()
+
+    def _hover(self, on: bool) -> None:
+        if not self._current:
+            super().configure(fg_color=RAISED if (on and self._state == "normal") else "transparent")
+
+    def set_look(self, current: bool, done: bool) -> None:
+        self._current = current
+        super().configure(fg_color=RAISED if current else "transparent", border_color=ACCENT if current else PANEL)
+        self.mark.configure(text="✓" if done else str(self._number),
+                            text_color=ACCENT if (done or current) else MUTED)
+        self.name.configure(text_color=ACCENT if current else (TEXT if done else MUTED))
+
+    def configure(self, require_redraw=False, **kw):
+        if "state" in kw:
+            self._state = kw.pop("state")
+            try:
+                self.configure_cursor()
+            except Exception:
+                pass
+        if kw:
+            super().configure(require_redraw=require_redraw, **kw)
+
+    def configure_cursor(self) -> None:
+        super().configure(cursor="hand2" if self._state == "normal" else "arrow")
+
+    def cget(self, key):
+        if key == "state":
+            return self._state
+        return super().cget(key)
 
 
 class App(ctk.CTk):
@@ -108,7 +198,7 @@ class App(ctk.CTk):
                 ctk.CTkLabel(head, image=img, text="").pack(side="left", padx=(0, 12))
             except Exception:
                 pass
-        ctk.CTkLabel(head, text="WhiteHole", font=self.f_title, text_color=TEXT).pack(side="left")
+        ctk.CTkLabel(head, text="WhiteHole", font=self.f_title, text_color=TITLE).pack(side="left")
         ctk.CTkLabel(head, text="  настройка телевизора", font=self.f_body, text_color=MUTED).pack(
             side="left", pady=(8, 0))
 
@@ -120,9 +210,7 @@ class App(ctk.CTk):
         side.grid_columnconfigure(0, weight=1)
         self.step_buttons: dict = {}
         for i, (key, name, tag) in enumerate(STEPS):
-            b = ctk.CTkButton(side, text="", anchor="w", height=52, corner_radius=12, font=self.f_step,
-                              fg_color="transparent", hover_color=CARD, text_color=TEXT,
-                              command=lambda k=key: self.show_step(k))
+            b = StepRow(side, i + 1, name, tag, self.f_step, self.f_small, lambda k=key: self.show_step(k))
             b.grid(row=i, column=0, sticky="ew", padx=10, pady=(12 if i == 0 else 3, 3))
             self.step_buttons[key] = b
         side.grid_rowconfigure(len(STEPS), weight=1)
@@ -164,11 +252,11 @@ class App(ctk.CTk):
         self.progress.grid_remove()
 
         # Журнал (скрыт по умолчанию)
-        self.log_frame = ctk.CTkFrame(self, fg_color=PANEL, corner_radius=12, border_width=1,
+        self.log_frame = ctk.CTkFrame(self, fg_color=LOG_BG, corner_radius=12, border_width=1,
                                       border_color=BORDER)
         self.log_frame.grid_columnconfigure(0, weight=1)
-        self.log_box = ctk.CTkTextbox(self.log_frame, height=150, font=self.f_mono, fg_color=PANEL,
-                                      text_color="#c9d1d9", wrap="word")
+        self.log_box = ctk.CTkTextbox(self.log_frame, height=150, font=self.f_mono, fg_color=LOG_BG,
+                                      text_color=MUTED, wrap="word")
         self.log_box.grid(row=0, column=0, sticky="nsew", padx=8, pady=(8, 4))
         self.log_box.configure(state="disabled")
         ctk.CTkButton(self.log_frame, text="Скопировать для поддержки", height=26, width=200,
@@ -178,7 +266,7 @@ class App(ctk.CTk):
         # Подвал
         foot = ctk.CTkFrame(self, fg_color=BG, corner_radius=0)
         foot.grid(row=4, column=0, columnspan=2, sticky="ew", padx=24, pady=(4, 12))
-        ctk.CTkLabel(foot, text=f"WhiteHole Setup {VERSION}", font=self.f_small, text_color="#5f6368").pack(
+        ctk.CTkLabel(foot, text=f"WhiteHole Setup {VERSION}", font=self.f_small, text_color=MUTED).pack(
             side="left")
         sup = ctk.CTkLabel(foot, text="Поддержка", font=self.f_small, text_color=ACCENT, cursor="hand2")
         sup.pack(side="right")
@@ -194,7 +282,7 @@ class App(ctk.CTk):
         box.grid(row=row, column=0, sticky="w", padx=28, pady=(20, 6))
         ctk.CTkLabel(box, text=text, font=self.f_h1, text_color=TEXT).pack(side="left")
         if tag:
-            ctk.CTkLabel(box, text=f" {tag} ", font=self.f_small, text_color=WARN, fg_color="#2a2208",
+            ctk.CTkLabel(box, text=f" {tag} ", font=self.f_small, text_color=MUTED, fg_color=RAISED,
                          corner_radius=8).pack(side="left", padx=12)
 
     def _p(self, parent, text: str, row: int, color: str = MUTED, font=None, pady=(0, 10)) -> ctk.CTkLabel:
@@ -204,9 +292,8 @@ class App(ctk.CTk):
         return lab
 
     def _big_button(self, parent, text: str, command, row: int, danger: bool = False) -> ctk.CTkButton:
-        b = ctk.CTkButton(parent, text=text, command=command, height=52, corner_radius=26, font=self.f_btn,
-                          fg_color=DANGER if danger else ACCENT, hover_color="#e05a5a" if danger else ACCENT_HOVER,
-                          text_color=ACCENT_TEXT, text_color_disabled="#3b3f45")
+        b = accent_button(parent, danger=danger, text=text, command=command, height=52, corner_radius=26,
+                          font=self.f_btn)
         b.grid(row=row, column=0, sticky="w", padx=28, pady=(6, 12), ipadx=24)
         self._action_buttons.append(b)
         return b
@@ -227,9 +314,8 @@ class App(ctk.CTk):
                    "должна быть включена отладка по сети.", 1)
         top = ctk.CTkFrame(f, fg_color="transparent")
         top.grid(row=2, column=0, sticky="w", padx=28, pady=(6, 12))
-        self.btn_scan = ctk.CTkButton(top, text="Найти телевизор", command=self.on_scan, height=52, corner_radius=26,
-                                      font=self.f_btn, fg_color=ACCENT, hover_color=ACCENT_HOVER,
-                                      text_color=ACCENT_TEXT, text_color_disabled="#3b3f45")
+        self.btn_scan = accent_button(top, text="Найти телевизор", command=self.on_scan, height=52, corner_radius=26,
+                                      font=self.f_btn)
         self.btn_scan.pack(side="left", ipadx=24)
         self._action_buttons.append(self.btn_scan)
         self.btn_cancel = ctk.CTkButton(top, text="Отмена", command=self.on_cancel_scan, height=52,
@@ -249,6 +335,7 @@ class App(ctk.CTk):
         self.ip_entry = ctk.CTkEntry(row, width=190, height=40, corner_radius=12, font=self.f_body,
                                      placeholder_text="192.168.1.50", fg_color=CARD, border_color=BORDER)
         self.ip_entry.pack(side="left", padx=10)
+        focus_ring(self.ip_entry)
         self.ip_entry.bind("<Return>", lambda e: self.on_manual())
         # Ручной ввод не блокируется никогда (даже во время поиска).
         self.btn_manual = ctk.CTkButton(row, text="Подключить", command=self.on_manual, height=40, width=130,
@@ -266,7 +353,7 @@ class App(ctk.CTk):
                    "WhiteHole станет домашним экраном — без рекламы и лишней нагрузки.", 1)
         self.reinstall_happ = ctk.CTkCheckBox(f, text="Переустановить Happ, даже если он уже стоит",
                                               font=self.f_body, text_color=TEXT, fg_color=ACCENT,
-                                              hover_color=ACCENT_HOVER, border_color=MUTED)
+                                              hover_color=ACCENT_HOVER, border_color=MUTED, checkmark_color=ACCENT_TEXT)
         self.reinstall_happ.grid(row=2, column=0, sticky="w", padx=28, pady=(4, 8))
         self._big_button(f, "Установить", self.on_install, 3)
         self.install_msg = self._p(f, "", 4, color=TEXT)
@@ -282,6 +369,7 @@ class App(ctk.CTk):
         self.sub_entry = ctk.CTkEntry(row, height=42, corner_radius=12, font=self.f_body, fg_color=CARD,
                                       border_color=BORDER, placeholder_text="https://…")
         self.sub_entry.grid(row=0, column=0, sticky="ew")
+        focus_ring(self.sub_entry)
         self._small_button(row, "Вставить", self.paste_sub, width=110).grid(row=0, column=1, padx=(10, 0))
         self._big_button(f, "Отправить в Happ на телевизоре", self.on_sub, 3)
         self._p(f, texts.SUB_HINT, 4, font=self.f_small)
@@ -304,10 +392,8 @@ class App(ctk.CTk):
         self._ads_empty("Нажми «Проверить телевизор»")
         row = ctk.CTkFrame(f, fg_color="transparent")
         row.grid(row=4, column=0, sticky="w", padx=28, pady=(4, 0))
-        self.btn_ads = ctk.CTkButton(row, text="Убрать рекламу", command=self.on_ads, height=52,
-                                     corner_radius=26, font=self.f_btn, fg_color=ACCENT,
-                                     hover_color=ACCENT_HOVER, text_color=ACCENT_TEXT,
-                                     text_color_disabled="#3b3f45")
+        self.btn_ads = accent_button(row, text="Убрать рекламу", command=self.on_ads, height=52,
+                                     corner_radius=26, font=self.f_btn)
         self.btn_ads.pack(side="left", ipadx=24)
         self._action_buttons.append(self.btn_ads)
         self._small_button(row, "Проверить телевизор", self.on_ads_check, width=190).pack(side="left", padx=12)
@@ -326,14 +412,14 @@ class App(ctk.CTk):
 
     def _show_ads_choices(self, choices) -> None:
         self._clear_ads()
-        badge = {"verified": ("проверено", ACCENT), "reported": ("по отзывам", WARN),
+        badge = {"verified": ("проверено", SUCCESS), "reported": ("по отзывам", WARN),
                  "home": ("родной экран", DANGER)}
         r = 0
         for c in choices:
             var = ctk.BooleanVar(value=c.checked)
             text = c.pkg.desc + ("  — уже отключено" if c.already_disabled else "")
             cb = ctk.CTkCheckBox(self.ads_list, text=text, variable=var, font=self.f_small, text_color=TEXT,
-                                 fg_color=ACCENT, hover_color=ACCENT_HOVER, border_color=MUTED)
+                                 fg_color=ACCENT, hover_color=ACCENT_HOVER, border_color=MUTED, checkmark_color=ACCENT_TEXT)
             cb.grid(row=r, column=0, sticky="w", padx=10, pady=(8, 0))
             try:
                 cb._text_label.configure(wraplength=340, justify="left")
@@ -363,7 +449,7 @@ class App(ctk.CTk):
                    "берётся с этого компьютера; если её нет — включу отключённые пакеты из известных списков.", 1)
         self.uninstall_launcher = ctk.CTkCheckBox(f, text="Ещё и удалить лаунчер WhiteHole с телевизора",
                                                   font=self.f_body, text_color=TEXT, fg_color=ACCENT,
-                                                  hover_color=ACCENT_HOVER, border_color=MUTED)
+                                                  hover_color=ACCENT_HOVER, border_color=MUTED, checkmark_color=ACCENT_TEXT)
         self.uninstall_launcher.grid(row=2, column=0, sticky="w", padx=28, pady=(4, 8))
         self._big_button(f, "Вернуть как было", self.on_restore, 3)
         self.restore_msg = self._p(f, "", 4, color=TEXT)
@@ -383,17 +469,9 @@ class App(ctk.CTk):
             self.on_ads_check()
 
     def _refresh_steps(self) -> None:
-        for i, (key, name, tag) in enumerate(STEPS):
-            mark = "✓" if key in self.done else str(i + 1)
-            label = f"  {mark}   {name}" + (f"\n        {tag}" if tag else "")
-            b = self.step_buttons[key]
-            cur = key == getattr(self, "current", "")
-            b.configure(text=label, fg_color=CARD if cur else "transparent",
-                        text_color=ACCENT if (key in self.done and not cur) else TEXT,
-                        border_width=1 if cur else 0, border_color=ACCENT)
-            lbl = getattr(b, "_text_label", None)
-            if lbl is not None:  # многострочная подпись — по левому краю
-                lbl.configure(justify="left")
+        cur = getattr(self, "current", "")
+        for key, *_ in STEPS:
+            self.step_buttons[key].set_look(current=key == cur, done=key in self.done)
 
     def mark_done(self, key: str) -> None:
         self.done.add(key)
@@ -430,17 +508,11 @@ class App(ctk.CTk):
         """Включает/выключает кнопки по текущим фоновым задачам. Ручной ввод IP не трогаем."""
         busy = self._busy
         for b in self._action_buttons + self._dev_buttons + self._ads_checks + list(self.step_buttons.values()):
-            try:
-                b.configure(state="disabled" if busy else "normal")
-            except Exception:
-                pass  # виджет мог быть уже удалён
+            set_enabled(b, not busy)
         if "scan" in self._lanes:
             # во время поиска можно выбрать уже найденный ТВ
             for b in self._dev_buttons:
-                try:
-                    b.configure(state="normal")
-                except Exception:
-                    pass
+                set_enabled(b, True)
             if not self.btn_cancel.winfo_manager():
                 self.btn_cancel.pack(side="left", padx=12, ipadx=12)
         else:
@@ -540,7 +612,7 @@ class App(ctk.CTk):
             kind, val = outcome
             try:
                 if kind == "ok":
-                    self.set_status("Готово", ACCENT)
+                    self.set_status("Готово", SUCCESS)
                     if on_ok:
                         on_ok(val)
                 else:
@@ -597,7 +669,7 @@ class App(ctk.CTk):
     def copy_log(self) -> None:
         self.clipboard_clear()
         self.clipboard_append(self.log_box.get("1.0", "end"))
-        self.set_status("Журнал скопирован — отправь его в поддержку", ACCENT)
+        self.set_status("Журнал скопирован — отправь его в поддержку", SUCCESS)
 
     # ------------------------------------------------------------ шаг 1
 
@@ -620,9 +692,8 @@ class App(ctk.CTk):
             state = {"device": "готов", "unauthorized": "нужно разрешение на ТВ"}.get(d.state, d.state)
             ctk.CTkLabel(self.dev_list, text=f"{d.title}  —  {state}", font=self.f_body, text_color=TEXT,
                          anchor="w").grid(row=i, column=0, sticky="ew", padx=10, pady=4)
-            b = ctk.CTkButton(self.dev_list, text="Выбрать", width=100, height=32, corner_radius=16,
-                              font=self.f_small, fg_color=ACCENT, hover_color=ACCENT_HOVER,
-                              text_color=ACCENT_TEXT, command=lambda dv=d: self.select_device(dv))
+            b = accent_button(self.dev_list, text="Выбрать", width=100, height=32, corner_radius=16,
+                              font=self.f_small, command=lambda dv=d: self.select_device(dv))
             b.grid(row=i, column=1, padx=10, pady=4)
             self._dev_buttons.append(b)
 
@@ -748,7 +819,7 @@ class App(ctk.CTk):
         self.device_label.configure(text="Телевизор:\n" + (d.platform_line or d.title)
                                     + (f"\n{d.ip}" if d.ip else ""), text_color=TEXT)
         msg = f"Подключено: {d.platform_line or d.title}. Можно ставить!"
-        color = ACCENT
+        color = SUCCESS
         if not d.is_tv:
             msg += ("\nПохоже, это не Android TV (нет режима телевизора — телефон, планшет или необычная "
                     "приставка). Установить можно, но лаунчер рассчитан на телевизор и пульт.")
@@ -779,7 +850,7 @@ class App(ctk.CTk):
             self.install_msg.configure(
                 text="\n".join(("✓ " if (home_ok or "домашн" not in x.lower()) else "⚠ ") + x for x in done)
                 + ("\n\nНажми «Домой» на пульте — увидишь WhiteHole." if home_ok else ""),
-                text_color=ACCENT if home_ok else WARN)
+                text_color=SUCCESS if home_ok else WARN)
             self.device_label.configure(text="Телевизор:\n" + (d.platform_line or d.title)
                                         + (f"\n{d.ip}" if d.ip else ""))
             self.mark_done("install")
@@ -813,7 +884,7 @@ class App(ctk.CTk):
 
         def ok(_):
             self.sub_msg.configure(text="✓ Отправил. На телевизоре открылся Happ — подтверди добавление "
-                                        "подписки пультом и нажми «Подключиться».", text_color=ACCENT)
+                                        "подписки пультом и нажми «Подключиться».", text_color=SUCCESS)
             self.mark_done("sub")
 
         def err(e: SetupError):
@@ -842,7 +913,7 @@ class App(ctk.CTk):
                 self.ads_msg.configure(text="Сначала установи WhiteHole (шаг 2) — иначе у телевизора не "
                                             "останется домашнего экрана.", text_color=WARN)
             elif all(c.already_disabled for c in st.choices):
-                self.ads_msg.configure(text="Всё из списка уже отключено ✓", text_color=ACCENT)
+                self.ads_msg.configure(text="Всё из списка уже отключено ✓", text_color=SUCCESS)
             elif any(c.checked for c in st.choices):
                 self.ads_msg.configure(text=f"Платформа: {st.profile_title}. Отмеченное по умолчанию — "
                                             "проверено на реальном ТВ; остальное — только по твоему выбору.",
@@ -885,9 +956,9 @@ class App(ctk.CTk):
         def ok(done):
             if done:
                 self.ads_msg.configure(text="✓ Отключено: " + ", ".join(done)
-                                       + f"\nРезервная копия: {self.engine.backup_path(d)}", text_color=ACCENT)
+                                       + f"\nРезервная копия: {self.engine.backup_path(d)}", text_color=SUCCESS)
             else:
-                self.ads_msg.configure(text="Отключать было нечего — всё уже сделано.", text_color=ACCENT)
+                self.ads_msg.configure(text="Отключать было нечего — всё уже сделано.", text_color=SUCCESS)
             self.mark_done("ads")
             self.after(100, self.on_ads_check)
 
@@ -910,7 +981,7 @@ class App(ctk.CTk):
 
         def ok(done):
             self.restore_msg.configure(text="\n".join("✓ " + x for x in done) or "Всё и так было на месте.",
-                                       text_color=ACCENT)
+                                       text_color=SUCCESS)
             self.done.discard("ads")
             if uninstall:
                 self.done.discard("install")
@@ -942,8 +1013,8 @@ class App(ctk.CTk):
         for line in texts.HELP_TEXT.splitlines(keepends=True):
             box.insert("end", line, ("h",) if line.strip() in texts.HELP_HEADINGS else ())
         box.configure(state="disabled")
-        ctk.CTkButton(win, text="Понятно", command=win.destroy, height=40, corner_radius=20, font=self.f_body,
-                      fg_color=ACCENT, hover_color=ACCENT_HOVER, text_color=ACCENT_TEXT).pack(pady=(0, 14))
+        accent_button(win, text="Понятно", command=win.destroy, height=40, corner_radius=20,
+                      font=self.f_body).pack(pady=(0, 14))
         win.after(100, win.focus_force)
 
     def on_close(self) -> None:
