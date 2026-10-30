@@ -401,9 +401,10 @@ def download(url: str, dest: Path, progress: ProgressCb = _noop_progress, timeou
             else:
                 progress(None, f"{mb:.1f} МБ")
     with open(tmp, "rb") as f:
-        if f.read(2) != b"PK":
-            tmp.unlink(missing_ok=True)
-            raise SetupError("Скачался не тот файл (не APK). Проверь интернет и попробуй ещё раз.", "download")
+        magic = f.read(2)
+    if magic != b"PK":  # файл закрыт — на Windows открытый файл не удалить
+        tmp.unlink(missing_ok=True)
+        raise SetupError("Скачался не тот файл (не APK). Проверь интернет и попробуй ещё раз.", "download")
     os.replace(tmp, dest)
     return dest
 
