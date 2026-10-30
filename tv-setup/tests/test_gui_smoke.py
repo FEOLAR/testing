@@ -18,15 +18,25 @@ from whitehole_setup import gui  # noqa: E402
 
 def make_app(*args, **kwargs):
     """На раннерах windows-latest создание Tk иногда случайно падает с «Can't find a usable tk.tcl»
-    или init.tcl (нестабильность окружения при многократном Tk()). Повторяем — к программе не относится."""
+    / init.tcl / «invalid command name tcl_findLibrary» — это сбой инициализации Tcl при многократном
+    Tk() в одном процессе. Настоящая программа создаёт окно один раз. Повторяем — к программе не относится."""
+    import gc
     import tkinter
-    for attempt in range(5):
+    for attempt in range(6):
         try:
             return gui.App(*args, **kwargs)
-        except tkinter.TclError as e:
-            if "usable" not in str(e) or attempt == 4:
+        except tkinter.TclError:
+            if attempt == 5:
                 raise
-            time.sleep(0.5)
+            gc.collect()
+            time.sleep(1.0)
+
+
+@pytest.fixture(autouse=True)
+def _collect_tk_garbage():
+    import gc
+    yield
+    gc.collect()
 
 
 def pump(app, cond=lambda: False, timeout=5.0):
