@@ -12,6 +12,17 @@
         android:importantForAccessibility="no"
         android:scaleType="centerCrop" />
 
+    <space.whitehole.tv.BlackHoleView
+        android:id="@+id/black_hole"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <View
+        android:id="@+id/bg_tint"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#00000000" />
+
     <View
         android:layout_width="match_parent"
         android:layout_height="match_parent"
@@ -81,6 +92,7 @@
         </LinearLayout>
 
         <FrameLayout
+            android:id="@+id/pages"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
@@ -117,6 +129,7 @@
                         android:orientation="horizontal">
 
                     <LinearLayout
+                        android:id="@+id/status_chip"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:background="@drawable/chip_bg"

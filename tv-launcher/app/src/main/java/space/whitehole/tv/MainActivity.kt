@@ -1,6 +1,8 @@
 package space.whitehole.tv
 
 import android.app.Activity
+import android.animation.ArgbEvaluator
+import android.animation.ValueAnimator
 import android.app.ActivityManager
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -28,6 +30,7 @@ import android.util.Log
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.DecelerateInterpolator
 import android.widget.GridLayout
 import android.widget.HorizontalScrollView
 import android.widget.ImageView
@@ -51,9 +54,23 @@ import java.util.TimeZone
 
 class MainActivity : Activity() {
 
-    private enum class Page { HOME, APPS, HELP, PAIR, SUB }
+    private enum class Page { HOME, APPS, HELP, PAIR, SUB, SETTINGS }
 
-    private lateinit var session: Session
+    internal lateinit var session: Session
+    internal lateinit var prefs: Prefs
+    internal lateinit var choiceDialog: ChoiceDialog
+    private lateinit var settings: SettingsScreen
+    private lateinit var blackHole: BlackHoleView
+    private lateinit var bgTint: View
+    private lateinit var connectAnim: HomeConnectAnimator
+
+    /** Анимация кнопки «Подключиться» — её вызывает и путь через Happ, и встроенный VPN. */
+    internal val connectAnimator: ConnectAnimator get() = connectAnim
+    private var lastVpnActive: Boolean? = null
+    private val tintCache = HashMap<String, Int>()
+    private var tintTarget = 0
+    private var tintCurrent = 0
+    private var tintAnimator: ValueAnimator? = null
     private lateinit var mainContent: View
     private lateinit var btnSub: TextView
     private lateinit var subLine: TextView
@@ -94,6 +111,7 @@ class MainActivity : Activity() {
     private class Visual(val drawable: Drawable?, val banner: Boolean)
 
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val focusInterpolator = DecelerateInterpolator(1.6f)
     private val io: ExecutorService = Executors.newFixedThreadPool(2)
     private val visualCache = HashMap<String, Visual>()
 
@@ -198,6 +216,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         favorites = Favorites(this)
+        prefs = Prefs(this)
 
         heroBg = findViewById(R.id.hero_bg)
         dim = findViewById(R.id.dim)
@@ -241,6 +260,21 @@ class MainActivity : Activity() {
         setupFocusAnim(notHomeChip, 1.06f)
         setupFocusAnim(btnMakeHome, 1.06f)
         session = Session(this)
+        blackHole = findViewById(R.id.black_hole)
+        bgTint = findViewById(R.id.bg_tint)
+        val pages = findViewById<ViewGroup>(R.id.pages)
+        val settingsView = layoutInflater.inflate(R.layout.page_settings, pages, false)
+        pages.addView(settingsView)
+        settings = SettingsScreen(this, settingsView)
+        val rootView = findViewById<ViewGroup>(R.id.root)
+        choiceDialog = ChoiceDialog(
+            rootView,
+            { content.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS },
+            { content.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS },
+            { v -> setupFocusAnim(v, 1.02f) }
+        )
+        connectAnim = HomeConnectAnimator(blackHole, findViewById(R.id.status_chip), btnConnect) { prefs.animations }
+        rootView.viewTreeObserver.addOnGlobalFocusChangeListener { _, newFocus -> onFocusMoved(newFocus) }
         mainContent = findViewById(R.id.content)
         btnSub = findViewById(R.id.btn_sub)
         subLine = findViewById(R.id.sub_line)
@@ -323,6 +357,7 @@ class MainActivity : Activity() {
 
         showPage(Page.HOME, false)
         btnConnect.requestFocus()
+        applyAnimationsSetting()
         reloadApps()
     }
 
@@ -334,6 +369,8 @@ class MainActivity : Activity() {
         updateVpnStatus()
         reloadApps()
         resumed = true
+        updateVpnStatus()
+        updateBlackHoleRunning()
         updateDefaultHomeUi()
         updateHomeUi()
         refreshMe(false)
@@ -345,6 +382,7 @@ class MainActivity : Activity() {
     override fun onPause() {
         super.onPause()
         resumed = false
+        updateBlackHoleRunning()
         mainHandler.removeCallbacks(clockTick)
     }
 
@@ -397,7 +435,7 @@ class MainActivity : Activity() {
     // ---------- Главный экран системы ----------
 
     /** Мы ли сейчас домашний экран по умолчанию. */
-    private fun isDefaultHome(): Boolean {
+    internal fun isDefaultHome(): Boolean {
         return try {
             val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
             val ri = packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)
@@ -415,7 +453,7 @@ class MainActivity : Activity() {
     }
 
     /** Настройки «Главный экран», если есть; иначе общие настройки. */
-    private fun openHomeSettings() {
+    internal fun openHomeSettings() {
         val home = Intent(Settings.ACTION_HOME_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         try {
             if (home.resolveActivity(packageManager) != null) {
@@ -431,6 +469,10 @@ class MainActivity : Activity() {
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         // На главном экране «Назад» ничего не делает (мы — домашний экран)
+        if (choiceDialog.isShowing) {
+            choiceDialog.dismiss()
+            return
+        }
         if (tileMenu.visibility == View.VISIBLE) {
             hideTileMenu(true)
             return
@@ -458,6 +500,11 @@ class MainActivity : Activity() {
         pageHome.visibility = if (p == Page.HOME) View.VISIBLE else View.GONE
         pageApps.visibility = if (p == Page.APPS) View.VISIBLE else View.GONE
         pageHelp.visibility = if (p == Page.HELP) View.VISIBLE else View.GONE
+        settings.page.visibility = if (p == Page.SETTINGS) View.VISIBLE else View.GONE
+        if (prev == Page.SETTINGS && p != Page.SETTINGS) settings.onHidden()
+        if (p != Page.HOME) tintTo(0)
+        updateBlackHoleRunning()
+        if (prev != p) animatePageIn(pageViewFor(p))
         tabHome.isSelected = p == Page.HOME
         tabApps.isSelected = p == Page.APPS
         appsHint.setText(if (pickMode) R.string.pick_hint else R.string.apps_hint)
@@ -492,6 +539,7 @@ class MainActivity : Activity() {
             }
             Page.PAIR -> btnPairMain.requestFocus()
             Page.SUB -> btnSubBack.requestFocus()
+            Page.SETTINGS -> settings.rebuild(null)
         }
     }
 
@@ -522,11 +570,13 @@ class MainActivity : Activity() {
     private fun connectHapp() {
         val p = happPackage ?: AppRepository.findHapp(this, apps)
         if (p == null) {
+            connectAnim.play(ConnectState.FAILED)
             Toast.makeText(this, R.string.happ_missing, Toast.LENGTH_LONG).show()
-            showPage(Page.HELP, true)
+            mainHandler.postDelayed({ if (!destroyed && page == Page.HOME) showPage(Page.HELP, true) }, 450L)
             return
         }
         happPackage = p
+        if (!isVpnActive()) connectAnim.play(ConnectState.CONNECTING)
         val sub = session.subUrl
         if (!sub.isNullOrEmpty() && sub != session.pushedSubUrl) {
             if (Happ.pushSubscription(this, sub, p)) {
@@ -601,7 +651,7 @@ class MainActivity : Activity() {
             showPage(Page.APPS, true)
         })
         favRow.addView(makeActionTile(favRow, R.drawable.ic_settings, getString(R.string.tile_settings)) {
-            openSettings()
+            showPage(Page.SETTINGS, true)
         })
         lastFavSig = favorites.get().joinToString("|") + "#" + lastAppsSig
 
@@ -710,7 +760,7 @@ class MainActivity : Activity() {
         tile.setOnKeyListener { v, keyCode, event ->
             handleTileKey(v, keyCode, event) { onTileLongPress(app, inHomeRow) }
         }
-        setupFocusAnim(tile, 1.06f)
+        setupFocusAnim(tile, 1.08f)
     }
 
     /**
@@ -799,7 +849,7 @@ class MainActivity : Activity() {
         tile.findViewById<TextView>(R.id.tile_label).text = text
         tile.contentDescription = text
         tile.setOnClickListener { action() }
-        setupFocusAnim(tile, 1.06f)
+        setupFocusAnim(tile, 1.08f)
         return tile
     }
 
@@ -895,7 +945,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun openSettings() {
+    internal fun openSettings() {
         try {
             startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         } catch (e: Exception) {
@@ -935,12 +985,22 @@ class MainActivity : Activity() {
 
     private fun updateVpnStatus() {
         if (destroyed) return
-        if (isVpnActive()) {
+        val active = isVpnActive()
+        if (active) {
             statusDot.setBackgroundResource(R.drawable.dot_green)
             statusText.setText(R.string.status_on)
         } else {
             statusDot.setBackgroundResource(R.drawable.dot_grey)
             statusText.setText(R.string.status_off)
+        }
+        val prev = lastVpnActive
+        lastVpnActive = active
+        if (active && (prev == false || connectAnim.state == ConnectState.CONNECTING)) {
+            connectAnim.play(ConnectState.CONNECTED)
+        } else if (!active && connectAnim.state == ConnectState.CONNECTING && resumed) {
+            connectAnim.play(ConnectState.IDLE)
+        } else if (!active && connectAnim.state == ConnectState.CONNECTED) {
+            connectAnim.play(ConnectState.IDLE)
         }
     }
 
@@ -1311,16 +1371,133 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun setupFocusAnim(v: View, scale: Float) {
+    internal fun setupFocusAnim(v: View, scale: Float) {
         v.setOnFocusChangeListener { view, hasFocus ->
-            val s = if (hasFocus) scale else 1f
-            view.animate()
-                .scaleX(s)
-                .scaleY(s)
-                .translationZ(if (hasFocus) dp(6).toFloat() else 0f)
-                .setDuration(140)
-                .start()
+            val sc = if (hasFocus) scale else 1f
+            val z = if (hasFocus) dp(8).toFloat() else 0f
+            if (prefs.animations) {
+                view.animate()
+                    .scaleX(sc)
+                    .scaleY(sc)
+                    .translationZ(z)
+                    .setInterpolator(focusInterpolator)
+                    .setDuration(180)
+                    .start()
+            } else {
+                view.animate().cancel()
+                view.scaleX = sc
+                view.scaleY = sc
+                view.translationZ = z
+            }
         }
+    }
+
+    // ---------- Анимации, фон, настройки ----------
+
+    /** Применить настройку «Анимации» (и автоматическое выключение на слабых ТВ). */
+    internal fun applyAnimationsSetting() {
+        blackHole.setAnimationsEnabled(prefs.animations)
+        if (!prefs.animations) {
+            connectAnim.play(ConnectState.IDLE)
+            tintAnimator?.cancel()
+        }
+        updateBlackHoleRunning()
+    }
+
+    private fun updateBlackHoleRunning() {
+        blackHole.setRunning(resumed && page == Page.HOME && !destroyed)
+    }
+
+    private fun pageViewFor(p: Page): View = when (p) {
+        Page.HOME -> pageHome
+        Page.APPS -> pageApps
+        Page.HELP -> pageHelp
+        Page.PAIR -> pagePair
+        Page.SUB -> pageSub
+        Page.SETTINGS -> settings.page
+    }
+
+    /** Смена экрана: мягкое появление со сдвигом снизу, 200 мс. */
+    private fun animatePageIn(v: View) {
+        if (!prefs.animations) {
+            v.alpha = 1f
+            v.translationY = 0f
+            return
+        }
+        v.alpha = 0f
+        v.translationY = dp(14).toFloat()
+        v.animate().alpha(1f).translationY(0f).setDuration(200).setInterpolator(focusInterpolator).start()
+    }
+
+    /** Фокус на плитке приложения на главной → фон плавно окрашивается в её цвет. */
+    private fun onFocusMoved(v: View?) {
+        if (destroyed || page != Page.HOME || v == null) return
+        val pkg = v.tag as? String
+        if (pkg == null || pkg.startsWith("action:")) {
+            tintTo(0)
+            return
+        }
+        val cached = tintCache[pkg]
+        if (cached != null) {
+            tintTo(cached)
+            return
+        }
+        val d = visualCache[pkg]?.drawable
+        if (d == null) {
+            tintTo(0)
+            return
+        }
+        val dom = ColorUtil.dominant(d)
+        val color = if (dom != null) Color.argb(0x55, Color.red(dom), Color.green(dom), Color.blue(dom)) else 0
+        tintCache[pkg] = color
+        tintTo(color)
+    }
+
+    private fun tintTo(color: Int) {
+        if (color == tintTarget) return
+        tintTarget = color
+        tintAnimator?.cancel()
+        if (!prefs.animations) {
+            tintCurrent = color
+            bgTint.setBackgroundColor(color)
+            return
+        }
+        val va = ValueAnimator.ofObject(ArgbEvaluator(), tintCurrent, color)
+        va.duration = 700
+        va.addUpdateListener { anim ->
+            tintCurrent = anim.animatedValue as Int
+            bgTint.setBackgroundColor(tintCurrent)
+        }
+        va.start()
+        tintAnimator = va
+    }
+
+    internal fun onIdleSettingChanged() {
+        // заставка при простое — подключается отдельно
+    }
+
+    internal fun onCitySettingChanged() {
+        // погода — подключается отдельно
+    }
+
+    internal fun addKidsSettingRow(screen: SettingsScreen) {
+        // детский режим — подключается отдельно
+    }
+
+    /** «Отвязать телевизор» из настроек (то же, что на экране «Подписка»). */
+    internal fun unpairFromSettings() {
+        val token = session.token
+        session.clear()
+        if (token != null) {
+            try {
+                io.execute { Api.unpair(token) }
+            } catch (e: Exception) {
+                // ignore
+            }
+        }
+        Toast.makeText(this, R.string.unpaired, Toast.LENGTH_LONG).show()
+        updateHomeUi()
+        showPage(Page.HOME, true)
     }
 
     /**

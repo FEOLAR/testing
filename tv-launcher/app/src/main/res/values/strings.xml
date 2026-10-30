@@ -93,4 +93,21 @@
     <string name="not_home_chip">Не главный экран — нажми, чтобы сделать</string>
     <string name="btn_make_home">Сделать главным экраном</string>
     <string name="make_home_note">Выбери WhiteHole в настройках главного экрана. На Google TV это может быть недоступно — тогда открывай WhiteHole из списка приложений.</string>
+    <string name="settings_title">Настройки</string>
+    <string name="set_animations">Анимации</string>
+    <string name="set_idle">Заставка при простое</string>
+    <string name="set_city">Город для погоды</string>
+    <string name="set_kids">Детский режим</string>
+    <string name="set_make_home">Сделать WhiteHole главным экраном</string>
+    <string name="set_system">Настройки телевизора</string>
+    <string name="set_unpair">Отвязать телевизор от подписки</string>
+    <string name="set_unpair_confirm">Нажми ещё раз</string>
+    <string name="set_about">О приложении</string>
+    <string name="on">Вкл</string>
+    <string name="off">Выкл</string>
+    <string name="idle_min">через %1$d мин</string>
+    <string name="about_value">WhiteHole для ТВ %1$s</string>
+    <string name="choose_idle">Заставка при простое</string>
+    <string name="choose_city">Город для погоды</string>
+    <string name="low_end_note">Слабое устройство — анимации выключены по умолчанию</string>
 </resources>
