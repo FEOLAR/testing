@@ -13,6 +13,12 @@ android {
         targetSdk = 34
         versionCode = (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1)
         versionName = "1.0." + (System.getenv("GITHUB_RUN_NUMBER") ?: "0")
+        // Адрес сервера WhiteHole (вход по коду, данные подписки, установка Happ) — один на всё приложение
+        buildConfigField("String", "API_BASE", "\"https://77-91-95-53.sslip.io:9443\"")
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     // Ключ подписи хранится в репозитории намеренно (v1, подарочное приложение):

@@ -42,10 +42,52 @@ import java.util.Date
 import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import android.widget.ProgressBar
+import org.json.JSONObject
+import java.util.Calendar
+import java.util.TimeZone
 
 class MainActivity : Activity() {
 
-    private enum class Page { HOME, APPS, HELP }
+    private enum class Page { HOME, APPS, HELP, PAIR, SUB }
+
+    private lateinit var session: Session
+    private lateinit var mainContent: View
+    private lateinit var btnSub: TextView
+    private lateinit var subLine: TextView
+    private lateinit var helpStatus: TextView
+    private lateinit var btnInstallHapp: TextView
+    private lateinit var pagePair: View
+    private lateinit var pairTitle: TextView
+    private lateinit var pairSubtitle: TextView
+    private lateinit var pairForm: View
+    private lateinit var pairQr: ImageView
+    private lateinit var pairCodeView: TextView
+    private lateinit var pairDot: View
+    private lateinit var pairStatus: TextView
+    private lateinit var btnPairMain: TextView
+    private lateinit var btnPairBack: TextView
+    private lateinit var pageSub: View
+    private lateinit var subPlan: TextView
+    private lateinit var subDays: TextView
+    private lateinit var subDaysLabel: TextView
+    private lateinit var subUntil: TextView
+    private lateinit var subDevices: TextView
+    private lateinit var subProgress: ProgressBar
+    private lateinit var subDeviceName: TextView
+    private lateinit var subQr: ImageView
+    private lateinit var btnSubBack: TextView
+    private lateinit var btnSubRefresh: TextView
+    private lateinit var btnSubUnpair: TextView
+
+    // вход по коду
+    private var pairGen = 0
+    private var pairToken: String? = null
+    private var pairDone = false
+    private var resumed = false
+    private var unpairArmed = false
+    private var downloading = false
+    private var meLoading = false
 
     private class Visual(val drawable: Drawable?, val banner: Boolean)
 
@@ -171,13 +213,53 @@ class MainActivity : Activity() {
         menuRemove.setOnClickListener { onMenuAction(MENU_REMOVE) }
         menuCancel.setOnClickListener { onMenuAction(MENU_CANCEL) }
         tileMenu.setOnClickListener { hideTileMenu(true) }
+        session = Session(this)
+        mainContent = findViewById(R.id.content)
+        btnSub = findViewById(R.id.btn_sub)
+        subLine = findViewById(R.id.sub_line)
+        helpStatus = findViewById(R.id.help_status)
+        btnInstallHapp = findViewById(R.id.btn_install_happ)
+        pagePair = findViewById(R.id.page_pair)
+        pairTitle = findViewById(R.id.pair_title)
+        pairSubtitle = findViewById(R.id.pair_subtitle)
+        pairForm = findViewById(R.id.pair_form)
+        pairQr = findViewById(R.id.pair_qr)
+        pairCodeView = findViewById(R.id.pair_code)
+        pairDot = findViewById(R.id.pair_dot)
+        pairStatus = findViewById(R.id.pair_status)
+        btnPairMain = findViewById(R.id.btn_pair_main)
+        btnPairBack = findViewById(R.id.btn_pair_back)
+        pageSub = findViewById(R.id.page_sub)
+        subPlan = findViewById(R.id.sub_plan)
+        subDays = findViewById(R.id.sub_days)
+        subDaysLabel = findViewById(R.id.sub_days_label)
+        subUntil = findViewById(R.id.sub_until)
+        subDevices = findViewById(R.id.sub_devices)
+        subProgress = findViewById(R.id.sub_progress)
+        subDeviceName = findViewById(R.id.sub_device_name)
+        subQr = findViewById(R.id.sub_qr)
+        btnSubBack = findViewById(R.id.btn_sub_back)
+        btnSubRefresh = findViewById(R.id.btn_sub_refresh)
+        btnSubUnpair = findViewById(R.id.btn_sub_unpair)
+        findViewById<View>(R.id.sub_card).clipToOutline = true
 
-        // Градиент на заголовке: белый → #AAB3C5
-        val titleWidth = heroTitle.paint.measureText(heroTitle.text.toString())
-        heroTitle.paint.shader = LinearGradient(
-            0f, 0f, titleWidth, 0f,
-            Color.WHITE, Color.parseColor("#AAB3C5"), Shader.TileMode.CLAMP
-        )
+        // Градиент на заголовках: белый → #AAB3C5
+        for (t in listOf(heroTitle, findViewById<TextView>(R.id.pair_brand), findViewById<TextView>(R.id.sub_brand))) {
+            applyTitleGradient(t)
+        }
+
+        btnSub.setOnClickListener { showPage(Page.SUB, true) }
+        btnInstallHapp.setOnClickListener { installHapp() }
+        btnPairBack.setOnClickListener { showPage(Page.HOME, true) }
+        btnPairMain.setOnClickListener { onPairMainClicked() }
+        btnSubBack.setOnClickListener { showPage(Page.HOME, true) }
+        btnSubRefresh.setOnClickListener { refreshMe(true) }
+        btnSubUnpair.setOnClickListener { onUnpairClicked() }
+        for (v in listOf<View>(btnSub, btnInstallHapp, btnPairMain, btnPairBack, btnSubBack, btnSubRefresh, btnSubUnpair)) {
+            setupFocusAnim(v, 1.06f)
+        }
+        setQr(subQr, Api.RENEW_LINK, dp(130))
+        updateHomeUi()
 
         tabHome.setOnClickListener { showPage(Page.HOME, true) }
         tabApps.setOnClickListener {
@@ -224,10 +306,17 @@ class MainActivity : Activity() {
         clockTick.run()
         updateVpnStatus()
         reloadApps()
+        resumed = true
+        updateHomeUi()
+        refreshMe(false)
+        if (page == Page.PAIR && !pairDone) {
+            if (pairToken != null) schedulePoll(pairGen, 500L) else startPairing()
+        }
     }
 
     override fun onPause() {
         super.onPause()
+        resumed = false
         mainHandler.removeCallbacks(clockTick)
     }
 
@@ -281,8 +370,15 @@ class MainActivity : Activity() {
     // ---------- Страницы ----------
 
     private fun showPage(p: Page, moveFocus: Boolean) {
+        val prev = page
         page = p
         if (p != Page.APPS) pickMode = false
+        if (prev == Page.PAIR && p != Page.PAIR) stopPairing()
+        if (p != Page.SUB) disarmUnpair()
+        val full = p == Page.PAIR || p == Page.SUB
+        mainContent.visibility = if (full) View.GONE else View.VISIBLE
+        pagePair.visibility = if (p == Page.PAIR) View.VISIBLE else View.GONE
+        pageSub.visibility = if (p == Page.SUB) View.VISIBLE else View.GONE
         pageHome.visibility = if (p == Page.HOME) View.VISIBLE else View.GONE
         pageApps.visibility = if (p == Page.APPS) View.VISIBLE else View.GONE
         pageHelp.visibility = if (p == Page.HELP) View.VISIBLE else View.GONE
@@ -292,9 +388,11 @@ class MainActivity : Activity() {
         appsHint.setTextColor(if (pickMode) Color.WHITE else Color.parseColor("#8A8F99"))
         dim.animate().alpha(if (p == Page.HOME) 0f else 0.82f).setDuration(200).start()
 
-        if (p == Page.HELP) {
-            if (happPackage == null) happPackage = AppRepository.findHapp(this, apps)
-            btnOpenHapp.visibility = if (happPackage != null) View.VISIBLE else View.GONE
+        if (p == Page.HELP) updateHelpButtons()
+        if (p == Page.HOME) updateHomeUi()
+        if (p == Page.SUB) {
+            bindSub()
+            refreshMe(false)
         }
         if (p == Page.APPS) refreshBadges()
 
@@ -307,8 +405,14 @@ class MainActivity : Activity() {
                 if (first != null) first.requestFocus() else tabApps.requestFocus()
             }
             Page.HELP -> {
-                if (btnOpenHapp.visibility == View.VISIBLE) btnOpenHapp.requestFocus() else btnHelpBack.requestFocus()
+                when {
+                    btnInstallHapp.visibility == View.VISIBLE -> btnInstallHapp.requestFocus()
+                    btnOpenHapp.visibility == View.VISIBLE -> btnOpenHapp.requestFocus()
+                    else -> btnHelpBack.requestFocus()
+                }
             }
+            Page.PAIR -> btnPairMain.requestFocus()
+            Page.SUB -> btnSubBack.requestFocus()
         }
     }
 
@@ -328,13 +432,31 @@ class MainActivity : Activity() {
     }
 
     private fun onConnectClicked() {
-        val p = happPackage ?: AppRepository.findHapp(this, apps)
-        if (p != null) {
-            happPackage = p
-            launchApp(p)
-        } else {
-            showPage(Page.HELP, true)
+        if (!session.paired) {
+            openPair()
+            return
         }
+        connectHapp()
+    }
+
+    /** Подключиться: отдать подписку в Happ (если ещё не отдавали эту ссылку), иначе просто открыть Happ. */
+    private fun connectHapp() {
+        val p = happPackage ?: AppRepository.findHapp(this, apps)
+        if (p == null) {
+            Toast.makeText(this, R.string.happ_missing, Toast.LENGTH_LONG).show()
+            showPage(Page.HELP, true)
+            return
+        }
+        happPackage = p
+        val sub = session.subUrl
+        if (!sub.isNullOrEmpty() && sub != session.pushedSubUrl) {
+            if (Happ.pushSubscription(this, sub, p)) {
+                session.pushedSubUrl = sub
+                Toast.makeText(this, R.string.sub_pushed, Toast.LENGTH_LONG).show()
+                return
+            }
+        }
+        launchApp(p)
     }
 
     // ---------- Приложения ----------
@@ -374,6 +496,8 @@ class MainActivity : Activity() {
             btnOpenHapp.visibility = if (happPackage != null) View.VISIBLE else View.GONE
         }
         refreshBadges()
+        if (page == Page.HELP) updateHelpButtons()
+        if (page == Page.PAIR && pairDone) showPairDone()
     }
 
     /** Перестроить ряд на главной. focusPkg — какую плитку сфокусировать после. */
@@ -695,6 +819,352 @@ class MainActivity : Activity() {
         }
     }
 
+    // ---------- Главная: вход / подписка ----------
+
+    private fun updateHomeUi() {
+        if (session.paired) {
+            btnConnect.setText(R.string.btn_connect)
+            btnSub.visibility = View.VISIBLE
+            val me = session.me
+            val line = if (me != null) subLineText(me) else null
+            subLine.text = line ?: ""
+            subLine.visibility = if (line != null) View.VISIBLE else View.GONE
+        } else {
+            btnConnect.setText(R.string.btn_login)
+            btnSub.visibility = View.GONE
+            subLine.visibility = View.GONE
+        }
+    }
+
+    private fun subLineText(me: JSONObject): String? {
+        val status = me.optString("status", "")
+        val days = me.optInt("days_left", 0)
+        val date = formatDate(me.optString("expire_at", ""))
+        return when {
+            status == "ACTIVE" && date != null -> getString(R.string.sub_line, date, days)
+            status.isNotEmpty() && status != "ACTIVE" -> getString(R.string.sub_line_expired)
+            else -> null
+        }
+    }
+
+    /** Обновить данные подписки с сервера (не чаще раза в 5 минут, если не force). Ошибки — молча. */
+    private fun refreshMe(force: Boolean) {
+        val token = session.token ?: return
+        if (meLoading) return
+        if (!force && System.currentTimeMillis() - session.meAt < ME_INTERVAL_MS) return
+        meLoading = true
+        try {
+            io.execute {
+                val r = Api.me(token)
+                mainHandler.post {
+                    meLoading = false
+                    if (destroyed || session.token != token) return@post
+                    when {
+                        r.code == 401 -> {
+                            session.clear()
+                            Toast.makeText(this, R.string.unpaired, Toast.LENGTH_LONG).show()
+                            if (page == Page.SUB) showPage(Page.HOME, true) else updateHomeUi()
+                        }
+                        r.ok -> {
+                            session.saveMe(r.json!!)
+                            updateHomeUi()
+                            if (page == Page.SUB) bindSub()
+                        }
+                        force -> Toast.makeText(this, R.string.me_failed, Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            meLoading = false
+        }
+    }
+
+    // ---------- Экран «Подписка» ----------
+
+    private fun bindSub() {
+        val me = session.me
+        if (me == null) {
+            subPlan.setText(R.string.plan_regular)
+            subDays.setText(R.string.dash)
+            subDaysLabel.setText(R.string.days_left_many)
+            subUntil.setText(R.string.me_loading)
+            subDevices.text = ""
+            subProgress.progress = 0
+            subDeviceName.text = ""
+            return
+        }
+        val status = me.optString("status", "")
+        val days = me.optInt("days_left", 0)
+        subPlan.setText(
+            when {
+                status == "NONE" -> R.string.plan_none
+                me.optBoolean("family", false) -> R.string.plan_family
+                else -> R.string.plan_regular
+            }
+        )
+        subDays.text = days.toString()
+        subDaysLabel.setText(
+            when {
+                days % 100 in 11..14 -> R.string.days_left_many
+                days % 10 == 1 -> R.string.days_left_one
+                days % 10 in 2..4 -> R.string.days_left_few
+                else -> R.string.days_left_many
+            }
+        )
+        val date = formatDate(me.optString("expire_at", ""))
+        subUntil.text = if (status == "ACTIVE" && date != null) getString(R.string.sub_until, date)
+        else getString(R.string.sub_expired)
+        val used = me.optInt("devices_used", 0)
+        val limit = me.optInt("device_limit", 0)
+        subDevices.text = if (limit > 0) getString(R.string.devices_of, used, limit) else ""
+        subProgress.progress = if (limit > 0) minOf(100, used * 100 / limit) else 0
+        val name = me.optString("device_name", "")
+        subDeviceName.text = if (name.isNotEmpty() && name != "null") getString(R.string.this_device, name) else ""
+    }
+
+    private fun onUnpairClicked() {
+        if (!unpairArmed) {
+            unpairArmed = true
+            btnSubUnpair.setText(R.string.unpair_confirm)
+            mainHandler.postDelayed({ disarmUnpair() }, 4000L)
+            return
+        }
+        disarmUnpair()
+        val token = session.token
+        session.clear()
+        if (token != null) {
+            try {
+                io.execute { Api.unpair(token) }
+            } catch (e: Exception) {
+                // ignore
+            }
+        }
+        Toast.makeText(this, R.string.unpaired, Toast.LENGTH_LONG).show()
+        showPage(Page.HOME, true)
+    }
+
+    private fun disarmUnpair() {
+        if (!unpairArmed) return
+        unpairArmed = false
+        btnSubUnpair.setText(R.string.btn_unpair)
+    }
+
+    // ---------- Вход через Telegram ----------
+
+    private fun openPair() {
+        pairDone = false
+        pairToken = null
+        showPairForm()
+        showPage(Page.PAIR, true)
+        startPairing()
+    }
+
+    private fun showPairForm() {
+        pairTitle.setText(R.string.pair_title)
+        pairSubtitle.setText(R.string.pair_subtitle)
+        pairForm.visibility = View.VISIBLE
+        btnPairMain.setText(R.string.btn_new_code)
+        pairCodeView.setText(R.string.pair_code_placeholder)
+        pairQr.setImageDrawable(null)
+        setPairStatus(R.string.pair_loading, R.drawable.dot_yellow)
+    }
+
+    private fun setPairStatus(text: Int, dot: Int) {
+        pairStatus.setText(text)
+        pairDot.setBackgroundResource(dot)
+    }
+
+    private fun stopPairing() {
+        pairGen++
+        pairToken = null
+    }
+
+    private fun startPairing() {
+        val gen = ++pairGen
+        pairToken = null
+        setPairStatus(R.string.pair_loading, R.drawable.dot_yellow)
+        val name = deviceName()
+        try {
+            io.execute {
+                val r = Api.pairStart(name)
+                mainHandler.post {
+                    if (destroyed || gen != pairGen || page != Page.PAIR) return@post
+                    val j = r.json
+                    if (r.ok && j != null && j.optString("token").isNotEmpty()) {
+                        pairToken = j.optString("token")
+                        val code = j.optString("code")
+                        pairCodeView.text = if (code.length == 6) code.substring(0, 3) + " " + code.substring(3) else code
+                        setQr(pairQr, j.optString("bot_link"), dp(148))
+                        setPairStatus(R.string.pair_wait, R.drawable.dot_yellow)
+                        schedulePoll(gen, POLL_MS)
+                    } else if (r.code == 429) {
+                        setPairStatus(R.string.pair_too_many, R.drawable.dot_red)
+                        mainHandler.postDelayed({ if (gen == pairGen && page == Page.PAIR && resumed) startPairing() }, 60_000L)
+                    } else {
+                        setPairStatus(R.string.pair_no_net, R.drawable.dot_red)
+                        mainHandler.postDelayed({ if (gen == pairGen && page == Page.PAIR && resumed) startPairing() }, 5_000L)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            // executor остановлен
+        }
+    }
+
+    private fun schedulePoll(gen: Int, delay: Long) {
+        mainHandler.postDelayed({ pollPairing(gen) }, delay)
+    }
+
+    private fun pollPairing(gen: Int) {
+        val token = pairToken ?: return
+        if (destroyed || gen != pairGen || page != Page.PAIR || pairDone) return
+        if (!resumed) return  // вернёмся — onResume продолжит опрос
+        try {
+            io.execute {
+                val r = Api.pairStatus(token)
+                mainHandler.post {
+                    if (destroyed || gen != pairGen || page != Page.PAIR || pairDone) return@post
+                    val j = r.json
+                    val status = if (r.ok && j != null) j.optString("status") else ""
+                    when (status) {
+                        "confirmed" -> onPaired(token, j!!.optString("sub_url", ""))
+                        "expired" -> startPairing()
+                        "pending" -> {
+                            setPairStatus(R.string.pair_wait, R.drawable.dot_yellow)
+                            schedulePoll(gen, POLL_MS)
+                        }
+                        else -> {
+                            setPairStatus(R.string.pair_no_net, R.drawable.dot_red)
+                            schedulePoll(gen, POLL_MS)
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            // executor остановлен
+        }
+    }
+
+    private fun onPaired(token: String, subUrl: String) {
+        pairDone = true
+        pairGen++
+        pairToken = null
+        val sub = if (subUrl.isEmpty() || subUrl == "null") null else subUrl
+        session.save(token, sub)
+        showPairDone()
+        btnPairMain.requestFocus()
+        refreshMe(true)
+        // Даём увидеть «Телевизор подключён», потом отдаём подписку в Happ
+        val happ = happPackage ?: AppRepository.findHapp(this, apps)
+        if (happ != null && sub != null) {
+            happPackage = happ
+            mainHandler.postDelayed({
+                if (!destroyed && session.subUrl == sub && session.pushedSubUrl != sub && page == Page.PAIR) {
+                    if (Happ.pushSubscription(this, sub, happ)) session.pushedSubUrl = sub
+                }
+            }, 1500L)
+        }
+    }
+
+    private fun showPairDone() {
+        val happ = happPackage ?: AppRepository.findHapp(this, apps)
+        pairTitle.setText(R.string.pair_done_title)
+        pairSubtitle.text = if (happ != null) getString(R.string.pair_done_subtitle, getString(R.string.app_name))
+        else getString(R.string.pair_done_no_happ)
+        pairForm.visibility = View.GONE
+        btnPairMain.setText(if (happ != null) R.string.btn_connect else R.string.btn_install_happ)
+    }
+
+    private fun onPairMainClicked() {
+        if (!pairDone) {
+            startPairing()
+            return
+        }
+        val happ = happPackage ?: AppRepository.findHapp(this, apps)
+        if (happ != null) {
+            connectHapp()
+        } else {
+            showPage(Page.HELP, true)
+            installHapp()
+        }
+    }
+
+    private fun deviceName(): String {
+        val manufacturer = (Build.MANUFACTURER ?: "").trim()
+        val model = (Build.MODEL ?: "").trim()
+        val name = if (model.startsWith(manufacturer, ignoreCase = true)) model else "$manufacturer $model"
+        return name.trim().replaceFirstChar { it.uppercase() }.take(48).ifEmpty { "Android TV" }
+    }
+
+    // ---------- Установка Happ ----------
+
+    private fun updateHelpButtons() {
+        if (happPackage == null) happPackage = AppRepository.findHapp(this, apps)
+        val has = happPackage != null
+        btnOpenHapp.visibility = if (has) View.VISIBLE else View.GONE
+        btnInstallHapp.visibility = if (has) View.GONE else View.VISIBLE
+        if (has && !downloading) helpStatus.visibility = View.GONE
+    }
+
+    private fun setHelpStatus(text: String) {
+        helpStatus.text = text
+        helpStatus.visibility = View.VISIBLE
+    }
+
+    private fun installHapp() {
+        if (downloading) return
+        if (!Happ.canInstall(this)) {
+            if (Happ.openInstallPermission(this)) {
+                setHelpStatus(getString(R.string.happ_allow_install))
+                Toast.makeText(this, R.string.happ_allow_install, Toast.LENGTH_LONG).show()
+                return
+            }
+        }
+        downloading = true
+        setHelpStatus(getString(R.string.happ_download_start))
+        val ctx = applicationContext
+        try {
+            io.execute {
+                val file = Happ.download(ctx) { p ->
+                    mainHandler.post { if (!destroyed) setHelpStatus(getString(R.string.happ_downloading, p)) }
+                }
+                mainHandler.post {
+                    downloading = false
+                    if (destroyed) return@post
+                    if (file == null) {
+                        setHelpStatus(getString(R.string.happ_download_failed))
+                        Happ.openInBrowser(this, Api.happApkUrl())
+                    } else if (Happ.install(this, file)) {
+                        setHelpStatus(getString(R.string.happ_installing))
+                    } else {
+                        setHelpStatus(getString(R.string.happ_download_failed))
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            downloading = false
+        }
+    }
+
+    private fun formatDate(iso: String): String? {
+        if (iso.length < 19 || iso == "null") return null
+        return try {
+            val f = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US)
+            f.timeZone = TimeZone.getTimeZone("UTC")
+            val d = f.parse(iso.substring(0, 19)) ?: return null
+            val c = Calendar.getInstance()
+            c.time = d
+            c.get(Calendar.DAY_OF_MONTH).toString() + " " + MONTHS[c.get(Calendar.MONTH)]
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun applyTitleGradient(t: TextView) {
+        val w = t.paint.measureText(t.text.toString())
+        t.paint.shader = LinearGradient(0f, 0f, w, 0f, Color.WHITE, Color.parseColor("#AAB3C5"), Shader.TileMode.CLAMP)
+    }
+
     // ---------- Прочее ----------
 
     private fun registerPackageReceiver() {
@@ -731,6 +1201,34 @@ class MainActivity : Activity() {
     /**
      * QR: 1 модуль = целое число пикселей, без сглаживания — чётко на любом экране.
      */
+    /** QR произвольного текста (вход, продление): целый масштаб модулей, без размытия. */
+    private fun setQr(view: ImageView, text: String, sizePx: Int) {
+        try {
+            val hints = HashMap<EncodeHintType, Any>()
+            hints[EncodeHintType.MARGIN] = 1
+            hints[EncodeHintType.ERROR_CORRECTION] = ErrorCorrectionLevel.M
+            hints[EncodeHintType.CHARACTER_SET] = "UTF-8"
+            val matrix = QRCodeWriter().encode(text, BarcodeFormat.QR_CODE, 0, 0, hints)
+            val modules = matrix.width
+            val scale = maxOf(1, sizePx / modules)
+            val side = modules * scale
+            val pixels = IntArray(side * side)
+            for (y in 0 until side) {
+                val my = y / scale
+                val row = y * side
+                for (x in 0 until side) {
+                    pixels[row + x] = if (matrix.get(x / scale, my)) Color.BLACK else Color.WHITE
+                }
+            }
+            val drawable = BitmapDrawable(resources, Bitmap.createBitmap(pixels, side, side, Bitmap.Config.ARGB_8888))
+            drawable.setFilterBitmap(false)
+            drawable.setAntiAlias(false)
+            view.setImageDrawable(drawable)
+        } catch (e: Exception) {
+            view.setImageDrawable(null)
+        }
+    }
+
     private fun renderQr(view: ImageView, sizePx: Int) {
         try {
             val hints = HashMap<EncodeHintType, Any>()
@@ -836,6 +1334,12 @@ class MainActivity : Activity() {
                             val d = BitmapDrawable(res, result)
                             d.setFilterBitmap(true)
                             heroBg.setImageDrawable(d)
+                            // тот же битмап — фон экранов «Вход через Telegram» и «Подписка» (без второй копии в памяти)
+                            for (id in intArrayOf(R.id.pair_hero, R.id.sub_hero)) {
+                                val extra = BitmapDrawable(res, result)
+                                extra.setFilterBitmap(true)
+                                findViewById<ImageView>(id).setImageDrawable(extra)
+                            }
                         }
                     }
                 }
@@ -855,5 +1359,11 @@ class MainActivity : Activity() {
         private const val MENU_REMOVE = 3
         private const val MENU_CANCEL = 4
         private const val BOT_LINK = "https://t.me/WhiteHoleVPNbot?start=src_tv"
+        private const val POLL_MS = 3_000L
+        private const val ME_INTERVAL_MS = 5 * 60_000L
+        private val MONTHS = arrayOf(
+            "января", "февраля", "марта", "апреля", "мая", "июня",
+            "июля", "августа", "сентября", "октября", "ноября", "декабря"
+        )
     }
 }
