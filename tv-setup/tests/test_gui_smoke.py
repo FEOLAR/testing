@@ -76,3 +76,31 @@ def test_window_flow(tmp_path, monkeypatch):
     finally:
         app.on_close()
     assert ["kill-server"] in tv.calls
+
+
+def test_window_google_tv_optin(tmp_path, monkeypatch):
+    from test_platforms import GOOGLE_TV_TCL
+    monkeypatch.setattr(gui.messagebox, "askyesno", lambda *a, **k: True)
+    monkeypatch.setattr(gui.messagebox, "showinfo", lambda *a, **k: None)
+    monkeypatch.setattr(gui.messagebox, "showerror", lambda *a, **k: None)
+    tv = FakeTV(packages=GOOGLE_TV_TCL, stock_wins=True, props={"ro.product.manufacturer": "TCL"})
+    eng = make_engine(tmp_path, tv)
+    app = gui.App(engine=eng, start_adb=False)
+    try:
+        app._device_ready(eng.device_info("192.168.3.19:5555", "device"))
+        assert "Google TV" in app.device_label.cget("text")
+        app.on_install()
+        assert pump(app, lambda: "install" in app.done)
+        assert "перехватывает" in app.install_msg.cget("text")
+        app.show_step("ads")
+        assert pump(app, lambda: bool(app._ads_choices) and not app._busy)
+        assert app.selected_ads() == []          # ничего не отмечено по умолчанию
+        app.on_ads()
+        pump(app, lambda: not app._busy, 1)
+        assert not tv.disabled
+        app._ads_vars["com.google.android.apps.tv.launcherx"].set(True)
+        app.on_ads()
+        assert pump(app, lambda: "ads" in app.done)
+        assert tv.disabled == {"com.google.android.apps.tv.launcherx"}
+    finally:
+        app.on_close()

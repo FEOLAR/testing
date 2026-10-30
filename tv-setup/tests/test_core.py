@@ -20,18 +20,34 @@ YANDEX_PKGS = {
 }
 
 
+HOME_PKGS = {
+    "com.yandex.tv.home", "com.google.android.apps.tv.launcherx", "com.google.android.tvlauncher",
+    "com.google.android.leanbacklauncher", "com.mitv.tvhome.atv", "com.mitv.tvhome", "com.android.launcher3",
+    "com.droidlogic.mboxlauncher", "ru.sberdevices.tvlauncher", "space.whitehole.tv",
+}
+RESOLVER = "android/com.android.internal.app.ResolverActivity"
+
+
 class FakeTV:
     """Имитация adb + телевизора: отвечает на команды как настоящий adb."""
 
-    def __init__(self, packages=None, state="device", connect_out="connected to " + SERIAL):
+    def __init__(self, packages=None, state="device", connect_out="connected to " + SERIAL,
+                 home=None, leanback=True, sdk=30, stock_wins=False, props=None):
         self.packages = set(packages if packages is not None else YANDEX_PKGS)
         self.disabled = set()
         self.state = state
         self.connect_out = connect_out
         self.calls = []
-        self.home = None
+        if home is None:
+            home = next((f"{p}/.HomeActivity" for p in sorted(HOME_PKGS) if p in self.packages
+                         and p != "space.whitehole.tv"), "")
+        self.home = home
+        self.leanback = leanback
+        self.stock_wins = stock_wins
         self.props = {"ro.product.model": "TD75UFBHH13", "ro.product.manufacturer": "Tuvio",
-                      "ro.build.version.release": "11", "ro.serialno": "ABC123"}
+                      "ro.product.brand": "Tuvio", "ro.build.version.release": "11",
+                      "ro.build.version.sdk": str(sdk), "ro.serialno": "ABC123"}
+        self.props.update(props or {})
 
     def __call__(self, args, timeout):
         a = args[1:]
@@ -54,6 +70,19 @@ class FakeTV:
             return self.shell(a[3])
         return 1, "unknown"
 
+    def _enabled(self, p):
+        return p in self.packages and p not in self.disabled
+
+    def effective_home(self):
+        hp = self.home.split("/")[0] if self.home else ""
+        if hp and self._enabled(hp):
+            return self.home
+        homes = [p for p in sorted(HOME_PKGS) if self._enabled(p)]
+        if len(homes) == 1:
+            return f"{homes[0]}/.HomeActivity" if homes[0] != "space.whitehole.tv" else \
+                "space.whitehole.tv/.MainActivity"
+        return RESOLVER
+
     def shell(self, cmd):
         if cmd.startswith("getprop "):
             return 0, self.props.get(cmd.split()[1], "")
@@ -61,6 +90,9 @@ class FakeTV:
             return 0, "\n".join("package:" + p for p in sorted(self.packages))
         if cmd == "pm list packages -d":
             return 0, "\n".join("package:" + p for p in sorted(self.disabled))
+        if cmd == "pm list features":
+            return 0, "feature:android.hardware.wifi\n" + (
+                "feature:android.software.leanback\n" if self.leanback else "")
         if cmd.startswith("pm disable-user --user 0 "):
             p = cmd.split()[-1]
             self.disabled.add(p)
@@ -70,10 +102,23 @@ class FakeTV:
             self.disabled.discard(p)
             return 0, f"Package {p} new state: enabled"
         if cmd.startswith("cmd package set-home-activity "):
-            self.home = cmd.split()[-1]
+            comp = cmd.split()[-1].strip("'")
+            if int(self.props["ro.build.version.sdk"]) < 24:
+                return 255, "Unknown command: set-home-activity"
+            pkg = comp.split("/")[0]
+            if not self.stock_wins or pkg != "space.whitehole.tv":
+                self.home = comp if "/" in comp else f"{pkg}/.HomeActivity"
             return 0, "Success"
         if cmd.startswith("cmd package resolve-activity"):
-            return 0, "priority=0 preferredOrder=0\ncom.yandex.tv.home/.HomeActivity"
+            parts = cmd.split()
+            last = parts[-1]
+            head = "priority=0 preferredOrder=0 match=0x108000 specificIndex=-1 isDefault=true\n"
+            if last != "android.intent.category.HOME":
+                return 0, head + f"{last}/.HomeActivity"
+            return 0, head + self.effective_home()
+        if cmd.startswith("cmd package query-activities"):
+            homes = [p for p in sorted(HOME_PKGS) if self._enabled(p)]
+            return 0, "\n".join(f"{p}/.HomeActivity" for p in homes)
         if cmd.startswith("am start"):
             return 0, "Starting: Intent { ... }"
         if cmd.startswith("input keyevent"):
@@ -372,8 +417,9 @@ def test_remove_ads_not_yandex(tmp_path):
     tv = FakeTV(packages={"space.whitehole.tv", "com.google.android.tvlauncher"})
     eng = make_engine(tmp_path, tv)
     with pytest.raises(SetupError) as e:
-        eng.remove_ads(dev(eng))
-    assert e.value.kind == "not_yandex"
+        eng.remove_ads(dev(eng))  # на Android TV по умолчанию ничего не отмечено
+    assert e.value.kind == "nothing_selected"
+    assert not tv.disabled
 
 
 def test_restore_from_backup(tmp_path):
@@ -397,7 +443,8 @@ def test_restore_without_backup_uses_known_list(tmp_path):
     eng = make_engine(tmp_path, tv)
     eng.restore(dev(eng))
     enabled = [c for c in tv.shell_cmds() if c.startswith("pm enable")]
-    assert sorted(enabled) == sorted("pm enable " + p for p in core.YANDEX_AD_PACKAGES)
+    assert sorted(enabled) == ["pm enable com.yandex.android.advid", "pm enable com.yandex.tv.home"]
+    assert tv.disabled == set()
     assert "space.whitehole.tv" in tv.packages  # без галочки не удаляем
 
 

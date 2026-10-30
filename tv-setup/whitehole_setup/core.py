@@ -25,6 +25,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Iterable, Optional
 
+from . import profiles
+
 # ---------------------------------------------------------------- константы
 
 ADB_PORT = 5555
@@ -37,14 +39,8 @@ HAPP_PKG = "su.happ.proxyutility"
 HAPP_URL = "https://github.com/Happ-proxy/happ-android/releases/latest/download/Happ.apk"
 
 YANDEX_HOME_PKG = "com.yandex.tv.home"
-# Ровно эти пакеты (и только если они есть на ТВ) отключаем на Яндекс ТВ.
-# Алиса, сервисы Яндекс ТВ, настройки и мастер настройки НЕ трогаем никогда.
-YANDEX_AD_PACKAGES = (
-    "com.yandex.tv.home",            # родной домашний экран с рекламой
-    "com.yandex.launcher.updaterapp",  # автообновление родного лаунчера
-    "com.yandex.android.advid",      # рекламный идентификатор
-)
-FORBIDDEN_MARKERS = ("com.yandex.tv.services", "alice", "settings", "setupwizard")
+# Проверенный владельцем список для Яндекс ТВ (Tuvio). Остальные платформы — в profiles.py.
+YANDEX_AD_PACKAGES = tuple(p.name for p in profiles.YANDEX.default_disable)
 
 SUPPORT_URL = "https://t.me/WhiteHoleVPNbot"
 
@@ -146,6 +142,28 @@ class DeviceInfo:
     manufacturer: str = ""
     android: str = ""
     hw_serial: str = ""        # ro.serialno — не меняется при смене IP
+    brand: str = ""            # ro.product.brand
+    sdk: int = 0               # ro.build.version.sdk
+    profile_id: str = ""       # yandex / googletv / androidtv / patchwall / sber / box / generic
+    brand_key: str = ""        # tcl / xiaomi / ... (для списков «не трогать»)
+    is_tv: bool = True         # есть feature android.software.leanback (или известная ТВ-оболочка)
+    home_apps: "list[str]" = field(default_factory=list)   # пакеты, умеющие быть домашним экраном
+    current_home: str = ""     # компонент, который сейчас открывается по «Домой»
+
+    @property
+    def profile(self) -> "profiles.Profile":
+        return profiles.profile_by_id(self.profile_id) if self.profile_id else profiles.GENERIC
+
+    @property
+    def platform_line(self) -> str:
+        """«Яндекс ТВ · Android 11 · Tuvio TD75UFBHH13»."""
+        parts = [self.profile.title if self.profile_id else ""]
+        if self.android:
+            parts.append(f"Android {self.android}")
+        name = self.title.rsplit(" (", 1)[0]
+        if name != "Телевизор":
+            parts.append(name)
+        return " · ".join(p for p in parts if p)
 
     @property
     def ip(self) -> str:
@@ -444,23 +462,59 @@ def happ_intent_command(link: str) -> str:
     return f"am start -a android.intent.action.VIEW -d {shlex.quote(link)} {HAPP_PKG}"
 
 
-def is_forbidden_package(pkg: str) -> bool:
-    low = pkg.lower()
-    return any(m in low for m in FORBIDDEN_MARKERS) and pkg not in YANDEX_AD_PACKAGES
-
-
 def _safe_name(s: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", s).strip("_") or "tv"
+
+
+def parse_home_component(out: str) -> str:
+    """Последняя строка вида pkg/.Activity из `resolve-activity --brief`."""
+    for line in reversed(out.splitlines()):
+        line = line.strip()
+        if re.match(r"^[A-Za-z0-9_.]+/[A-Za-z0-9_.$]+$", line):
+            return line
+    return ""
+
+
+def parse_query_activities(out: str) -> "list[str]":
+    res: list = []
+    for line in out.splitlines():
+        m = re.match(r"^\s*([A-Za-z0-9_.]+)/[A-Za-z0-9_.$]+\s*$", line)
+        if m and m.group(1) not in res:
+            res.append(m.group(1))
+    return res
+
+
+RESOLVER_PKGS = ("android", "com.android.internal.app")
 
 
 # ---------------------------------------------------------------- сценарии
 
 @dataclass
 class AdsStatus:
-    yandex: bool
+    profile_id: str
+    profile_title: str
     launcher_installed: bool
-    present: "list[str]" = field(default_factory=list)          # какие из списка есть на ТВ
-    already_disabled: "list[str]" = field(default_factory=list)
+    choices: "list[profiles.Choice]" = field(default_factory=list)
+
+    # совместимость со старым кодом/тестами
+    @property
+    def yandex(self) -> bool:
+        return self.profile_id == "yandex"
+
+    @property
+    def present(self) -> "list[str]":
+        return [c.pkg.name for c in self.choices]
+
+    @property
+    def already_disabled(self) -> "list[str]":
+        return [c.pkg.name for c in self.choices if c.already_disabled]
+
+
+@dataclass
+class HomeResult:
+    status: str        # ok / chooser / stock / manual
+    current: str = ""
+    message: str = ""
 
 
 class Engine:
@@ -474,17 +528,54 @@ class Engine:
         self.sleep = sleep
         self.clock = clock
 
-    # --- подключение
+    # --- подключение и определение платформы
 
     def device_info(self, serial: str, state: Optional[str] = None) -> DeviceInfo:
         st = state or self.adb.state(serial) or "offline"
         info = DeviceInfo(serial=serial, state=st)
         if st == "device":
-            info.model = self.adb.getprop(serial, "ro.product.model")
-            info.manufacturer = self.adb.getprop(serial, "ro.product.manufacturer")
-            info.android = self.adb.getprop(serial, "ro.build.version.release")
-            info.hw_serial = self.adb.getprop(serial, "ro.serialno")
+            self.detect(info)
         return info
+
+    def detect(self, info: DeviceInfo) -> DeviceInfo:
+        s = info.serial
+        info.model = self.adb.getprop(s, "ro.product.model")
+        info.manufacturer = self.adb.getprop(s, "ro.product.manufacturer")
+        info.brand = self.adb.getprop(s, "ro.product.brand")
+        info.android = self.adb.getprop(s, "ro.build.version.release")
+        try:
+            info.sdk = int(self.adb.getprop(s, "ro.build.version.sdk") or 0)
+        except ValueError:
+            info.sdk = 0
+        info.hw_serial = self.adb.getprop(s, "ro.serialno")
+        try:
+            pkgs = self.adb.packages(s)
+        except SetupError:
+            pkgs = set()
+        prof = profiles.detect_profile(pkgs)
+        info.profile_id = prof.id
+        info.brand_key = profiles.brand_key(info.manufacturer, info.brand, pkgs)
+        _, feats = self.adb.shell(s, "pm list features", timeout=20)
+        leanback = "android.software.leanback" in feats
+        info.is_tv = leanback or prof.id in ("yandex", "sber", "patchwall", "googletv", "androidtv")
+        if not info.is_tv and prof.id == "box":  # launcher3 без leanback — скорее телефон/планшет
+            info.profile_id = profiles.GENERIC.id
+        info.home_apps = self.home_apps(s) or [p for p in pkgs if p in profiles.all_known_packages()
+                                               and p in sum((pr.home_packages for pr in profiles.ALL_PROFILES), ())]
+        info.current_home = self.current_home(s)
+        self.log(f"Платформа: {info.platform_line}; leanback={leanback}; домашние экраны: "
+                 f"{', '.join(info.home_apps) or '?'}; сейчас: {info.current_home or '?'}")
+        return info
+
+    def home_apps(self, serial: str) -> "list[str]":
+        _, out = self.adb.shell(serial, "cmd package query-activities --brief -a android.intent.action.MAIN "
+                                        "-c android.intent.category.HOME", timeout=20)
+        return [p for p in parse_query_activities(out) if p not in RESOLVER_PKGS]
+
+    def current_home(self, serial: str) -> str:
+        _, out = self.adb.shell(serial, "cmd package resolve-activity --brief -a android.intent.action.MAIN "
+                                        "-c android.intent.category.HOME", timeout=20)
+        return parse_home_component(out)
 
     def connect(self, serial: str) -> DeviceInfo:
         res = self.adb.connect(serial)
@@ -568,6 +659,9 @@ class Engine:
         done: list = []
         pkgs = self.adb.packages(dev.serial)
         need_happ = reinstall_happ or HAPP_PKG not in pkgs
+        if not dev.current_home:
+            dev.current_home = self.current_home(dev.serial)
+        self._remember_original_home(dev)
 
         launcher_apk = self._fetch(LAUNCHER_URL, "whitehole-tv.apk", progress, "лаунчер WhiteHole")
         happ_apk = self._fetch(HAPP_URL, "Happ.apk", progress, "Happ") if need_happ else None
@@ -584,10 +678,8 @@ class Engine:
             done.append("Happ уже был установлен — не трогал")
 
         progress(None, "Делаю WhiteHole домашним экраном…")
-        if self.set_home(dev.serial, LAUNCHER_ACTIVITY):
-            done.append("WhiteHole теперь домашний экран")
-        else:
-            done.append("Не получилось назначить домашний экран — нажми «Домой» на пульте и выбери WhiteHole")
+        home = self.switch_home(dev)
+        done.append(home.message)
         self.adb.shell(dev.serial, f"am start -n {LAUNCHER_ACTIVITY}", timeout=15)
         progress(1.0, "Готово")
         return done
@@ -596,6 +688,25 @@ class Engine:
         code, out = self.adb.shell(serial, f"cmd package set-home-activity {shlex.quote(component)}")
         low = out.lower()
         return code == 0 and "error" not in low and "exception" not in low and "unknown" not in low
+
+    def switch_home(self, dev: DeviceInfo) -> HomeResult:
+        """set-home-activity → проверка resolve-activity. На Android < 7 команды нет — инструкция."""
+        manual = ("Нажми «Домой» на пульте и выбери WhiteHole → «Всегда». Если телевизор не спрашивает — "
+                  "открой шаг «Убрать рекламу» и отключи родной домашний экран.")
+        if dev.sdk and dev.sdk < 24:
+            return HomeResult("manual", "", "Этот Android не умеет менять домашний экран командой. " + manual)
+        ok = self.set_home(dev.serial, LAUNCHER_ACTIVITY)
+        cur = self.current_home(dev.serial)
+        dev.current_home = cur
+        pkg = cur.split("/")[0] if cur else ""
+        if pkg == LAUNCHER_PKG:
+            return HomeResult("ok", cur, "WhiteHole теперь домашний экран")
+        if not cur or pkg in RESOLVER_PKGS:
+            return HomeResult("chooser", cur, "Почти готово: " + manual)
+        self.log(f"set-home-activity={'ok' if ok else 'ошибка'}, но «Домой» открывает {cur}")
+        return HomeResult("stock", cur, "Родной домашний экран всё ещё перехватывает «Домой». "
+                                        "Открой шаг «Убрать рекламу» и отключи его галочкой "
+                                        "(или нажми «Домой» и выбери WhiteHole → «Всегда»).")
 
     # --- подписка
 
@@ -609,14 +720,23 @@ class Engine:
                              "вручную или через «Web Import».", "happ", out)
         return link
 
-    # --- реклама Яндекс ТВ
+    # --- реклама / родной домашний экран
+
+    def _stock_home_pkg(self, dev: DeviceInfo, backup: Optional[dict] = None) -> Optional[str]:
+        for comp in ((backup or {}).get("previous_home") or "", dev.current_home or ""):
+            pkg = comp.split("/")[0]
+            if pkg and pkg != LAUNCHER_PKG and pkg not in RESOLVER_PKGS:
+                return pkg
+        return None
 
     def ads_status(self, dev: DeviceInfo) -> AdsStatus:
         pkgs = self.adb.packages(dev.serial)
         disabled = self.adb.packages(dev.serial, disabled_only=True)
-        present = [p for p in YANDEX_AD_PACKAGES if p in pkgs]
-        return AdsStatus(yandex=YANDEX_HOME_PKG in pkgs, launcher_installed=LAUNCHER_PKG in pkgs,
-                         present=present, already_disabled=[p for p in present if p in disabled])
+        prof = profiles.detect_profile(pkgs)
+        dev.profile_id = prof.id
+        choices = profiles.choices_for(prof, pkgs, disabled, dev.brand_key,
+                                       self._stock_home_pkg(dev, self.load_backup(dev)))
+        return AdsStatus(prof.id, prof.title, LAUNCHER_PKG in pkgs, choices)
 
     def backup_path(self, dev: DeviceInfo) -> Path:
         ident = dev.hw_serial or dev.serial
@@ -632,33 +752,67 @@ class Engine:
             self.log(f"Не читается резервная копия {p}: {e}")
             return None
 
-    def remove_ads(self, dev: DeviceInfo, progress: ProgressCb = _noop_progress) -> "list[str]":
-        st = self.ads_status(dev)
-        if not st.launcher_installed:
-            raise SetupError("Сначала установи лаунчер WhiteHole (шаг «Установить»), иначе у телевизора "
-                             "не останется домашнего экрана.", "no_launcher")
-        if not st.yandex:
-            raise SetupError("Это не Яндекс ТВ — здесь отключать нечего.", "not_yandex")
-        targets = [p for p in st.present if p not in st.already_disabled]
-        for p in targets:  # двойная страховка
-            assert p in YANDEX_AD_PACKAGES and not is_forbidden_package(p), p
-
-        # 1) Резервная копия ДО любых изменений (дополняем, если уже была).
+    def _write_backup(self, dev: DeviceInfo, add_disabled: "Iterable[str]" = ()) -> Path:
         old = self.load_backup(dev) or {}
-        prev = list(old.get("disabled", []))
+        now = _dt.datetime.now().isoformat(timespec="seconds")
+        prev_home = old.get("previous_home") or ""
+        if not prev_home and dev.current_home and not dev.current_home.startswith(LAUNCHER_PKG + "/"):
+            prev_home = dev.current_home
         backup = {
             "app": "WhiteHole Setup",
             "serial": dev.hw_serial or dev.serial,
             "adb_serial": dev.serial,
             "model": dev.model,
             "manufacturer": dev.manufacturer,
-            "created": old.get("created") or _dt.datetime.now().isoformat(timespec="seconds"),
-            "updated": _dt.datetime.now().isoformat(timespec="seconds"),
-            "previous_home": YANDEX_HOME_PKG,
-            "disabled": sorted(set(prev) | set(targets)),
+            "platform": dev.profile_id or old.get("platform", ""),
+            "created": old.get("created") or now,
+            "updated": now,
+            "previous_home": prev_home,
+            "disabled": sorted(set(old.get("disabled", [])) | set(add_disabled)),
         }
         path = self.backup_path(dev)
         path.write_text(json.dumps(backup, ensure_ascii=False, indent=2), encoding="utf-8")
+        return path
+
+    def _remember_original_home(self, dev: DeviceInfo) -> None:
+        """Записываем родной домашний экран ДО того, как WhiteHole станет домашним."""
+        if self.load_backup(dev) is None and dev.current_home and \
+                not dev.current_home.startswith(LAUNCHER_PKG + "/"):
+            p = self._write_backup(dev)
+            self.log(f"Запомнил исходный домашний экран {dev.current_home} в {p}")
+
+    def remove_ads(self, dev: DeviceInfo, selected: Optional["Iterable[str]"] = None,
+                   progress: ProgressCb = _noop_progress) -> "list[str]":
+        """Отключает выбранные пакеты (по умолчанию — отмеченные профилем как verified)."""
+        st = self.ads_status(dev)
+        if not st.launcher_installed:
+            raise SetupError("Сначала установи лаунчер WhiteHole (шаг «Установить»), иначе у телевизора "
+                             "не останется домашнего экрана.", "no_launcher")
+        if not st.choices:
+            raise SetupError(f"Для платформы «{st.profile_title}» отключать нечего — "
+                             "безопасного списка для неё нет.", "nothing")
+        allowed = {c.pkg.name: c for c in st.choices}
+        if selected is None:
+            wanted = [c.pkg.name for c in st.choices if c.checked]
+        else:
+            wanted = list(dict.fromkeys(selected))
+        if not wanted:
+            raise SetupError("Ничего не отмечено. Поставь галочки у того, что хочешь отключить.",
+                             "nothing_selected")
+        bad = [p for p in wanted if p not in allowed]
+        if bad:
+            raise SetupError("Эти пакеты отключать нельзя: " + ", ".join(bad), "forbidden")
+        prof = profiles.profile_by_id(st.profile_id)
+        targets = [p for p in wanted if not allowed[p].already_disabled]
+        for p in targets:  # двойная страховка
+            assert not profiles.is_never(p, prof, dev.brand_key), p
+        if not targets:
+            return []
+
+        # 1) Резервная копия ДО любых изменений (дополняем, если уже была).
+        if not dev.current_home:
+            dev.current_home = self.current_home(dev.serial)
+        path = self._write_backup(dev, targets)
         self.log(f"Резервная копия: {path}")
 
         # 2) Домашний экран — WhiteHole.
@@ -673,6 +827,7 @@ class Engine:
                 done.append(p)
             else:
                 self.log(f"Не отключился {p}: {out}")
+        self.set_home(dev.serial, LAUNCHER_ACTIVITY)
         self.adb.shell(dev.serial, f"am start -n {LAUNCHER_ACTIVITY}", timeout=15)
         progress(1.0, "Готово")
         return done
@@ -681,13 +836,16 @@ class Engine:
                 progress: ProgressCb = _noop_progress) -> "list[str]":
         done: list = []
         backup = self.load_backup(dev)
+        pkgs = self.adb.packages(dev.serial)
+        known = profiles.all_known_packages()
         if backup and backup.get("disabled"):
-            targets = [p for p in backup["disabled"] if p in YANDEX_AD_PACKAGES]
+            targets = list(backup["disabled"])
             self.log(f"Беру список из резервной копии: {', '.join(targets)}")
         else:
-            targets = list(YANDEX_AD_PACKAGES)
-            self.log("Резервной копии нет — включаю всё из известного списка.")
-        pkgs = self.adb.packages(dev.serial)
+            disabled = self.adb.packages(dev.serial, disabled_only=True)
+            targets = sorted(p for p in disabled if p in known)
+            self.log("Резервной копии нет — включаю отключённые пакеты из известных списков: "
+                     + (", ".join(targets) or "таких нет"))
         for p in targets:
             if p not in pkgs:
                 continue
@@ -697,10 +855,23 @@ class Engine:
                 done.append(f"Включён {p}")
             else:
                 self.log(f"Не включился {p}: {out}")
-        if YANDEX_HOME_PKG in pkgs:
-            comp = self.resolve_home_activity(dev.serial, YANDEX_HOME_PKG) or YANDEX_HOME_PKG
+
+        # Домашний экран — тот, что был до WhiteHole.
+        comp = ""
+        prev = (backup or {}).get("previous_home") or ""
+        if prev and prev.split("/")[0] in pkgs:
+            comp = prev
+        else:
+            prof = profiles.detect_profile(pkgs)
+            for h in prof.home_packages:
+                if h in pkgs:
+                    comp = self.resolve_home_activity(dev.serial, h) or h
+                    break
+        if comp:
             if self.set_home(dev.serial, comp):
-                done.append("Домашний экран — снова Яндекс ТВ")
+                done.append(f"Домашний экран — снова родной ({comp.split('/')[0]})")
+            else:
+                done.append("Нажми «Домой» и выбери родной домашний экран → «Всегда»")
         if uninstall_launcher and LAUNCHER_PKG in pkgs:
             progress(None, "Удаляю лаунчер WhiteHole…")
             code, out = self.adb.run(["-s", dev.serial, "uninstall", LAUNCHER_PKG], timeout=60)
@@ -709,17 +880,20 @@ class Engine:
             else:
                 self.log(f"Не удалился лаунчер: {out}")
         bp = self.backup_path(dev)
-        if backup and bp.exists():
+        if backup and bp.exists() and (uninstall_launcher or backup.get("disabled")):
             bp.replace(bp.with_name(bp.stem + ".restored.json"))
         self.adb.shell(dev.serial, "input keyevent KEYCODE_HOME", timeout=10)
+        dev.current_home = self.current_home(dev.serial)
         progress(1.0, "Готово")
         return done
 
     def resolve_home_activity(self, serial: str, pkg: str) -> Optional[str]:
         _, out = self.adb.shell(serial, "cmd package resolve-activity --brief -a android.intent.action.MAIN "
                                         f"-c android.intent.category.HOME {pkg}")
-        for line in reversed(out.splitlines()):
-            line = line.strip()
-            if line.startswith(pkg + "/"):
-                return line
-        return None
+        comp = parse_home_component(out)
+        return comp if comp.startswith(pkg + "/") else None
+
+
+def is_forbidden_package(pkg: str) -> bool:
+    """Глобальный запрет (без учёта профиля) — для обратной совместимости."""
+    return profiles.is_never(pkg, profiles.GENERIC)

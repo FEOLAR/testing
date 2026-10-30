@@ -196,7 +196,7 @@ class App(ctk.CTk):
 
     def _p(self, parent, text: str, row: int, color: str = MUTED, font=None, pady=(0, 10)) -> ctk.CTkLabel:
         lab = ctk.CTkLabel(parent, text=text, font=font or self.f_body, text_color=color, justify="left",
-                           anchor="w", wraplength=560)
+                           anchor="w", wraplength=520)
         lab.grid(row=row, column=0, sticky="ew", padx=28, pady=pady)
         return lab
 
@@ -281,14 +281,19 @@ class App(ctk.CTk):
     def _page_ads(self) -> ctk.CTkFrame:
         f = self._page()
         self._h1(f, "Убрать рекламу", 0, "для продвинутых")
-        self._p(f, texts.ADS_WARNING, 1, color=ACCENT, font=self.f_btn)
-        self._p(f, "Только для Яндекс ТВ. Отключу родной домашний экран Яндекса с рекламой, его "
-                   "автообновление и рекламный идентификатор:\n"
-                   + "\n".join("  •  " + p for p in core.YANDEX_AD_PACKAGES)
-                   + "\nСначала нужен установленный лаунчер WhiteHole. Перед отключением сохраню "
-                     "резервную копию на этом компьютере.", 2, font=self.f_small)
+        self.ads_warn = self._p(f, texts.ADS_WARNING_GENERIC, 1, color=ACCENT, font=self.f_btn, pady=(0, 4))
+        self.ads_info = self._p(f, "Выбери, что отключить. Показываю только то, что есть на твоём телевизоре. "
+                                   "Перед отключением сохраню резервную копию на этом компьютере.", 2,
+                                font=self.f_small, pady=(0, 6))
+        self.ads_list = ctk.CTkScrollableFrame(f, height=150, fg_color=CARD, corner_radius=12)
+        self.ads_list.grid(row=3, column=0, sticky="ew", padx=28, pady=(0, 8))
+        self.ads_list.grid_columnconfigure(0, weight=1)
+        self._ads_vars: dict = {}
+        self._ads_checks: list = []
+        self._ads_choices: dict = {}
+        self._ads_empty("Нажми «Проверить телевизор»")
         row = ctk.CTkFrame(f, fg_color="transparent")
-        row.grid(row=3, column=0, sticky="w", padx=28, pady=(4, 0))
+        row.grid(row=4, column=0, sticky="w", padx=28, pady=(4, 0))
         self.btn_ads = ctk.CTkButton(row, text="Убрать рекламу", command=self.on_ads, height=52,
                                      corner_radius=26, font=self.f_btn, fg_color=ACCENT,
                                      hover_color=ACCENT_HOVER, text_color=ACCENT_TEXT,
@@ -296,15 +301,56 @@ class App(ctk.CTk):
         self.btn_ads.pack(side="left", ipadx=24)
         self._action_buttons.append(self.btn_ads)
         self._small_button(row, "Проверить телевизор", self.on_ads_check, width=190).pack(side="left", padx=12)
-        self.ads_msg = self._p(f, "", 4, color=TEXT, pady=(12, 10))
+        self.ads_msg = self._p(f, "", 5, color=TEXT, pady=(10, 10))
         return f
+
+    def _ads_empty(self, text: str) -> None:
+        self._clear_ads()
+        ctk.CTkLabel(self.ads_list, text=text, font=self.f_small, text_color=MUTED, justify="left",
+                     wraplength=520).grid(row=0, column=0, sticky="w", padx=10, pady=10)
+
+    def _clear_ads(self) -> None:
+        self._ads_vars, self._ads_checks, self._ads_choices = {}, [], {}
+        for w in self.ads_list.winfo_children():
+            w.destroy()
+
+    def _show_ads_choices(self, choices) -> None:
+        self._clear_ads()
+        badge = {"verified": ("проверено", ACCENT), "reported": ("по отзывам", WARN),
+                 "home": ("родной экран", DANGER)}
+        r = 0
+        for c in choices:
+            var = ctk.BooleanVar(value=c.checked)
+            text = c.pkg.desc + ("  — уже отключено" if c.already_disabled else "")
+            cb = ctk.CTkCheckBox(self.ads_list, text=text, variable=var, font=self.f_small, text_color=TEXT,
+                                 fg_color=ACCENT, hover_color=ACCENT_HOVER, border_color=MUTED)
+            cb.grid(row=r, column=0, sticky="w", padx=10, pady=(8, 0))
+            try:
+                cb._text_label.configure(wraplength=340, justify="left")
+            except Exception:
+                pass
+            if c.already_disabled:
+                cb.configure(state="disabled")
+            else:
+                self._ads_checks.append(cb)
+            b_text, b_color = badge.get(c.pkg.confidence, ("", MUTED))
+            ctk.CTkLabel(self.ads_list, text=b_text, font=self.f_small, text_color=b_color).grid(
+                row=r, column=1, sticky="ne", padx=10, pady=(8, 0))
+            r += 1
+            note = c.pkg.name + (f"\n⚠ {c.pkg.warning}" if c.pkg.warning else "")
+            ctk.CTkLabel(self.ads_list, text=note, font=self.f_small, text_color=MUTED, justify="left",
+                         anchor="w", wraplength=440).grid(row=r, column=0, columnspan=2, sticky="w",
+                                                          padx=(42, 10), pady=(0, 4))
+            r += 1
+            self._ads_vars[c.pkg.name] = var
+            self._ads_choices[c.pkg.name] = c
 
     def _page_restore(self) -> ctk.CTkFrame:
         f = self._page()
         self._h1(f, "Вернуть как было", 0)
-        self._p(f, "Включу обратно всё, что отключал на шаге «Убрать рекламу», и верну родной домашний "
-                   "экран Яндекса (если он есть). Резервная копия берётся с этого компьютера; если её нет — "
-                   "включу всё из известного списка.", 1)
+        self._p(f, "Включу обратно всё, что отключал на шаге «Убрать рекламу», и верну тот домашний экран, "
+                   "который был до WhiteHole (Яндекс ТВ, Google TV, PatchWall и т. д.). Резервная копия "
+                   "берётся с этого компьютера; если её нет — включу отключённые пакеты из известных списков.", 1)
         self.uninstall_launcher = ctk.CTkCheckBox(f, text="Ещё и удалить лаунчер WhiteHole с телевизора",
                                                   font=self.f_body, text_color=TEXT, fg_color=ACCENT,
                                                   hover_color=ACCENT_HOVER, border_color=MUTED)
@@ -360,7 +406,7 @@ class App(ctk.CTk):
 
     def set_busy(self, busy: bool, text: str = "") -> None:
         self._busy = busy
-        for b in self._action_buttons + self._dev_buttons:
+        for b in self._action_buttons + self._dev_buttons + self._ads_checks:
             b.configure(state="disabled" if busy else "normal")
         for b in self.step_buttons.values():
             b.configure(state="disabled" if busy else "normal")
@@ -553,9 +599,16 @@ class App(ctk.CTk):
     def _device_ready(self, d: DeviceInfo) -> None:
         self.device = d
         self._show_devices([d])
-        self.device_label.configure(text=f"Телевизор:\n{d.title}" + (f"\nAndroid {d.android}" if d.android else ""),
-                                    text_color=TEXT)
-        self.find_msg.configure(text=f"Подключено: {d.title}. Можно ставить!", text_color=ACCENT)
+        self.device_label.configure(text="Телевизор:\n" + (d.platform_line or d.title)
+                                    + (f"\n{d.ip}" if d.ip else ""), text_color=TEXT)
+        msg = f"Подключено: {d.platform_line or d.title}. Можно ставить!"
+        color = ACCENT
+        if not d.is_tv:
+            msg += ("\nПохоже, это не Android TV (нет режима телевизора — телефон, планшет или необычная "
+                    "приставка). Установить можно, но лаунчер рассчитан на телевизор и пульт.")
+            color = WARN
+        self.find_msg.configure(text=msg, text_color=color)
+        self._ads_empty("Нажми «Проверить телевизор»")
         self.btn_next1.pack(side="left", padx=12, ipadx=12)
         self.mark_done("find")
 
@@ -576,8 +629,13 @@ class App(ctk.CTk):
         self.install_msg.configure(text="")
 
         def ok(done):
-            self.install_msg.configure(text="\n".join("✓ " + x for x in done)
-                                       + "\n\nНажми «Домой» на пульте — увидишь WhiteHole.", text_color=ACCENT)
+            home_ok = any("теперь домашний экран" in x for x in done)
+            self.install_msg.configure(
+                text="\n".join(("✓ " if (home_ok or "домашн" not in x.lower()) else "⚠ ") + x for x in done)
+                + ("\n\nНажми «Домой» на пульте — увидишь WhiteHole." if home_ok else ""),
+                text_color=ACCENT if home_ok else WARN)
+            self.device_label.configure(text="Телевизор:\n" + (d.platform_line or d.title)
+                                        + (f"\n{d.ip}" if d.ip else ""))
             self.mark_done("install")
 
         def err(e: SetupError):
@@ -623,32 +681,58 @@ class App(ctk.CTk):
         if not self._need_device():
             return
         d = self.device
+        self._ads_empty("Проверяю…")
 
         def ok(st: core.AdsStatus):
-            if not st.yandex:
-                self.ads_msg.configure(text="Это не Яндекс ТВ — здесь ничего отключать не нужно.", text_color=MUTED)
-            elif not st.launcher_installed:
+            self.ads_warn.configure(text=texts.ADS_WARNING if st.profile_id == "yandex"
+                                    else texts.ADS_WARNING_GENERIC)
+            if not st.choices:
+                self._ads_empty(f"Платформа: {st.profile_title}. Для неё нет проверенного списка — "
+                                "ничего не отключаю. Если «Домой» открывает WhiteHole, всё уже хорошо.")
+                self.ads_msg.configure(text="", text_color=MUTED)
+                return
+            self._show_ads_choices(st.choices)
+            if not st.launcher_installed:
                 self.ads_msg.configure(text="Сначала установи WhiteHole (шаг 2) — иначе у телевизора не "
                                             "останется домашнего экрана.", text_color=WARN)
+            elif all(c.already_disabled for c in st.choices):
+                self.ads_msg.configure(text="Всё из списка уже отключено ✓", text_color=ACCENT)
+            elif any(c.checked for c in st.choices):
+                self.ads_msg.configure(text=f"Платформа: {st.profile_title}. Отмеченное по умолчанию — "
+                                            "проверено на реальном ТВ; остальное — только по твоему выбору.",
+                                       text_color=TEXT)
             else:
-                left = [p for p in st.present if p not in st.already_disabled]
-                if left:
-                    self.ads_msg.configure(text="Яндекс ТВ найден. Можно отключить: " + ", ".join(left),
-                                           text_color=TEXT)
-                else:
-                    self.ads_msg.configure(text="Реклама уже отключена ✓", text_color=ACCENT)
+                self.ads_msg.configure(text=f"Платформа: {st.profile_title}. Ничего не отмечено: для этой "
+                                            "платформы список собран по отзывам и на нашем ТВ не проверен — "
+                                            "отмечай только то, что точно нужно.", text_color=WARN)
 
         def err(e: SetupError):
+            self._ads_empty("Не получилось проверить телевизор.")
             self.ads_msg.configure(text=e.message, text_color=DANGER)
 
         self.run_task(lambda: self.engine.ads_status(d), ok, err, busy_text="Проверяю телевизор…")
+
+    def selected_ads(self) -> "list[str]":
+        return [name for name, var in self._ads_vars.items()
+                if var.get() and not self._ads_choices[name].already_disabled]
 
     def on_ads(self) -> None:
         if not self._need_device():
             return
         d = self.device
-        if not messagebox.askyesno("Убрать рекламу",
-                                   "Отключить домашний экран Яндекса и рекламу?\n\n" + texts.ADS_WARNING,
+        if not self._ads_choices:
+            self.on_ads_check()
+            return
+        sel = self.selected_ads()
+        if not sel:
+            self.ads_msg.configure(text="Ничего не отмечено.", text_color=WARN)
+            return
+        lines = []
+        for name in sel:
+            c = self._ads_choices[name]
+            lines.append(f"• {c.pkg.desc} ({name})" + (f"\n   ⚠ {c.pkg.warning}" if c.pkg.warning else ""))
+        warn = texts.ADS_WARNING if d.profile_id == "yandex" else texts.ADS_WARNING_GENERIC
+        if not messagebox.askyesno("Убрать рекламу", "Отключить:\n" + "\n".join(lines) + "\n\n" + warn,
                                    parent=self):
             return
 
@@ -659,11 +743,13 @@ class App(ctk.CTk):
             else:
                 self.ads_msg.configure(text="Отключать было нечего — всё уже сделано.", text_color=ACCENT)
             self.mark_done("ads")
+            self.after(100, self.on_ads_check)
 
         def err(e: SetupError):
             self.ads_msg.configure(text=e.message, text_color=DANGER)
 
-        self.run_task(lambda: self.engine.remove_ads(d, self.progress_cb), ok, err, busy_text="Убираю рекламу…")
+        self.run_task(lambda: self.engine.remove_ads(d, sel, self.progress_cb), ok, err,
+                      busy_text="Убираю рекламу…")
 
     # ------------------------------------------------------------ шаг 5
 
