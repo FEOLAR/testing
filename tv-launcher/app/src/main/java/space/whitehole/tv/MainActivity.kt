@@ -105,6 +105,9 @@ class MainActivity : Activity() {
     private lateinit var renewTitle: TextView
     private lateinit var subDeviceList: TextView
     private var pingRunning = false
+    private var kidsPick = false
+    private lateinit var pinPad: PinPad
+    private lateinit var rowHint: View
     private var renewQrDone = false
     private val pingTick = object : Runnable {
         override fun run() {
@@ -315,6 +318,7 @@ class MainActivity : Activity() {
         topWeather = findViewById(R.id.top_weather)
         topDate = findViewById(R.id.top_date)
         btnContinue = findViewById(R.id.btn_continue)
+        rowHint = findViewById(R.id.row_hint)
         recentsLabel = findViewById(R.id.recents_label)
         recentsScroll = findViewById(R.id.recents_scroll)
         recentsRow = findViewById(R.id.recents_row)
@@ -350,6 +354,18 @@ class MainActivity : Activity() {
             { content.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS },
             { content.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS },
             { v -> setupFocusAnim(v, 1.02f) }
+        )
+        pinPad = PinPad(
+            rootView,
+            {
+                content.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+                tileMenu.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+            },
+            {
+                content.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
+                tileMenu.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
+            },
+            { v -> setupFocusAnim(v, 1.06f) }
         )
         connectAnim = HomeConnectAnimator(blackHole, findViewById(R.id.status_chip), btnConnect) { prefs.animations }
         rootView.viewTreeObserver.addOnGlobalFocusChangeListener { _, newFocus -> onFocusMoved(newFocus) }
@@ -537,7 +553,7 @@ class MainActivity : Activity() {
 
     private fun updateDefaultHomeUi() {
         val isHome = isDefaultHome()
-        notHomeChip.visibility = if (isHome) View.GONE else View.VISIBLE
+        notHomeChip.visibility = if (isHome || isKidsMode()) View.GONE else View.VISIBLE
         makeHomeNote.visibility = if (isHome) View.GONE else View.VISIBLE
         btnMakeHome.visibility = if (isHome) View.GONE else View.VISIBLE
     }
@@ -559,8 +575,16 @@ class MainActivity : Activity() {
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         // На главном экране «Назад» ничего не делает (мы — домашний экран)
+        if (pinPad.isShowing) {
+            pinPad.cancel()
+            return
+        }
         if (choiceDialog.isShowing) {
             choiceDialog.dismiss()
+            return
+        }
+        if (kidsPick && page == Page.APPS) {
+            finishKidsPick()
             return
         }
         if (tileMenu.visibility == View.VISIBLE) {
@@ -578,9 +602,14 @@ class MainActivity : Activity() {
     // ---------- Страницы ----------
 
     private fun showPage(p: Page, moveFocus: Boolean) {
+        // в детском режиме доступна только главная
+        if (isKidsMode() && p != Page.HOME) return
         val prev = page
         page = p
-        if (p != Page.APPS) pickMode = false
+        if (p != Page.APPS) {
+            pickMode = false
+            kidsPick = false
+        }
         if (prev == Page.PAIR && p != Page.PAIR) stopPairing()
         if (p != Page.SUB) disarmUnpair()
         val full = p == Page.PAIR || p == Page.SUB
@@ -597,8 +626,8 @@ class MainActivity : Activity() {
         if (prev != p) animatePageIn(pageViewFor(p))
         tabHome.isSelected = p == Page.HOME
         tabApps.isSelected = p == Page.APPS
-        appsHint.setText(if (pickMode) R.string.pick_hint else R.string.apps_hint)
-        appsHint.setTextColor(if (pickMode) Color.WHITE else Color.parseColor("#8A8F99"))
+        appsHint.setText(if (kidsPick) R.string.kids_pick_hint else if (pickMode) R.string.pick_hint else R.string.apps_hint)
+        appsHint.setTextColor(if (pickMode || kidsPick) Color.WHITE else Color.parseColor("#8A8F99"))
         dim.animate().alpha(if (p == Page.HOME) 0f else 0.82f).setDuration(200).start()
 
         if (p == Page.HELP) {
@@ -614,7 +643,7 @@ class MainActivity : Activity() {
 
         if (!moveFocus) return
         when (p) {
-            Page.HOME -> btnConnect.requestFocus()
+            Page.HOME -> if (isKidsMode()) favRow.getChildAt(0)?.requestFocus() else btnConnect.requestFocus()
             Page.APPS -> {
                 appsScroll.scrollTo(0, 0)
                 val first = appsGrid.getChildAt(0)
@@ -706,7 +735,7 @@ class MainActivity : Activity() {
             lastAppsSig = appsSig
             buildAppsGrid()
         }
-        val favSig = favorites.get().joinToString("|") + "#" + appsSig
+        val favSig = (if (isKidsMode()) "kids#" + prefs.kidsApps().joinToString("|") else favorites.get().joinToString("|")) + "#" + appsSig
         if (favSig != lastFavSig) {
             lastFavSig = favSig
             if (tileMenu.visibility != View.VISIBLE) buildFavRow(null)
@@ -728,11 +757,27 @@ class MainActivity : Activity() {
 
         val byPkg = HashMap<String, AppEntry>()
         for (a in apps) byPkg[a.packageName] = a
-        for (pkg in favorites.get()) {
+        val kids = isKidsMode()
+        for (pkg in if (kids) prefs.kidsApps() else favorites.get()) {
             val app = byPkg[pkg] ?: continue
             val tile = inflateTile(favRow)
             bindAppTile(tile, app, true)
             favRow.addView(tile)
+        }
+        if (kids) {
+            val exit = makeActionTile(favRow, R.drawable.ic_lock, getString(R.string.kids_exit_tile)) { askExitKids() }
+            exit.tag = "action:kids_exit"
+            favRow.addView(exit)
+            lastFavSig = "kids#" + prefs.kidsApps().joinToString("|") + "#" + lastAppsSig
+            if (page == Page.HOME) {
+                val cf = currentFocus
+                if (focusedIndex >= 0) {
+                    favRow.getChildAt(minOf(focusedIndex, favRow.childCount - 1))?.requestFocus()
+                } else if (cf == null || !cf.isShown) {
+                    favRow.getChildAt(0)?.requestFocus()
+                }
+            }
+            return
         }
         val addTile = makeActionTile(favRow, R.drawable.ic_add, getString(R.string.tile_add)) { openPicker() }
         addTile.tag = TAG_ADD
@@ -787,7 +832,7 @@ class MainActivity : Activity() {
 
     /** Галочка на плитках в сетке у приложений, которые уже на главном. */
     private fun refreshBadges() {
-        val favs = HashSet(favorites.get())
+        val favs = HashSet(if (kidsPick) prefs.kidsApps() else favorites.get())
         for (i in 0 until appsGrid.childCount) {
             val c = appsGrid.getChildAt(i)
             val pkg = c.tag as? String ?: continue
@@ -838,7 +883,10 @@ class MainActivity : Activity() {
         }
 
         tile.setOnClickListener {
-            if (!inHomeRow && pickMode) {
+            if (!inHomeRow && kidsPick && page == Page.APPS) {
+                prefs.toggleKidsApp(app.packageName)
+                refreshBadges()
+            } else if (!inHomeRow && pickMode) {
                 pickApp(app)
             } else {
                 launchApp(app.packageName)
@@ -904,6 +952,7 @@ class MainActivity : Activity() {
     }
 
     private fun onTileLongPress(app: AppEntry, inHomeRow: Boolean) {
+        if (isKidsMode() || kidsPick) return
         if (inHomeRow) {
             showTileMenu(app)
         } else {
@@ -1246,8 +1295,115 @@ class MainActivity : Activity() {
         subDeviceList.visibility = View.VISIBLE
     }
 
-    /** Детский режим (подключается отдельно). */
-    private fun isKidsMode(): Boolean = false
+    // ---------- Детский режим ----------
+
+    private fun isKidsMode(): Boolean = ::prefs.isInitialized && prefs.kidsEnabled && prefs.kidsApps().isNotEmpty()
+
+    internal fun addKidsSettingRow(screen: SettingsScreen) {
+        screen.add("kids", getString(R.string.set_kids), getString(if (isKidsMode()) R.string.on else R.string.off)) {
+            startKidsSetup()
+        }
+        if (prefs.kidsApps().isNotEmpty()) {
+            screen.add("kids_apps", getString(R.string.kids_apps), getString(R.string.kids_apps_count, prefs.kidsApps().size)) {
+                startKidsPick()
+            }
+        }
+    }
+
+    /** Включение: PIN (если ещё нет) → выбор приложений → «Назад» включает режим. */
+    private fun startKidsSetup() {
+        if (prefs.hasPin) {
+            startKidsPick()
+            return
+        }
+        pinPad.show(getString(R.string.pin_new), { first ->
+            mainHandler.post {
+                pinPad.show(getString(R.string.pin_repeat), { second ->
+                    if (second == first) {
+                        prefs.setPin(first)
+                        mainHandler.post { startKidsPick() }
+                        true
+                    } else {
+                        mainHandler.post {
+                            startKidsSetup()
+                            pinPad.setError(getString(R.string.pin_mismatch))
+                        }
+                        true
+                    }
+                }, { })
+            }
+            true
+        }, { })
+    }
+
+    private fun startKidsPick() {
+        pickMode = false
+        showPage(Page.APPS, true)
+        kidsPick = true
+        appsHint.setText(R.string.kids_pick_hint)
+        appsHint.setTextColor(Color.WHITE)
+        refreshBadges()
+    }
+
+    private fun finishKidsPick() {
+        kidsPick = false
+        if (prefs.kidsApps().isEmpty()) {
+            Toast.makeText(this, R.string.kids_none, Toast.LENGTH_LONG).show()
+            refreshBadges()
+            showPage(Page.SETTINGS, true)
+            return
+        }
+        prefs.kidsEnabled = true
+        Toast.makeText(this, R.string.kids_on, Toast.LENGTH_SHORT).show()
+        refreshBadges()
+        applyKidsMode()
+    }
+
+    private fun askExitKids() {
+        pinPad.show(getString(R.string.pin_exit_kids), { pin ->
+            if (prefs.checkPin(pin)) {
+                prefs.kidsEnabled = false
+                mainHandler.post {
+                    Toast.makeText(this, R.string.kids_off, Toast.LENGTH_SHORT).show()
+                    applyKidsMode()
+                }
+                true
+            } else {
+                false
+            }
+        }, { })
+    }
+
+    /** Перестроить главную под детский режим (или обратно). */
+    private fun applyKidsMode() {
+        lastFavSig = ""
+        lastRecentsSig = "?"
+        lastInputsSig = "?"
+        showPage(Page.HOME, false)
+        updateHomeUi()
+        buildFavRow(null)
+        buildRecentsRow()
+        refreshInputs()
+        val first = if (isKidsMode()) favRow.getChildAt(0) else btnConnect
+        first?.requestFocus()
+    }
+
+    /** Что прячем от ребёнка: вкладку «Приложения», кнопки подписки/подключения, подсказки, системные переходы. */
+    private fun applyKidsVisibility() {
+        if (!::rowHint.isInitialized) return
+        val kids = isKidsMode()
+        val vis = if (kids) View.GONE else View.VISIBLE
+        tabApps.visibility = vis
+        btnHow.visibility = vis
+        btnConnect.visibility = vis
+        rowHint.visibility = vis
+        if (kids) {
+            btnSub.visibility = View.GONE
+            btnContinue.visibility = View.GONE
+            notHomeChip.visibility = View.GONE
+            renewCard.visibility = View.GONE
+        }
+    }
 
     internal fun openSettings() {
         try {
@@ -1324,6 +1480,7 @@ class MainActivity : Activity() {
             subLine.visibility = View.GONE
         }
         updateRenewBanner()
+        applyKidsVisibility()
     }
 
     private fun subLineText(me: JSONObject): String? {

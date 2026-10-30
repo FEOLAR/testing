@@ -129,4 +129,19 @@
     <string name="devices_title">Устройства в подписке:</string>
     <string name="device_line">• %1$s — с %2$s</string>
     <string name="device_line_seen">• %1$s — с %2$s, был(о) в сети %3$s</string>
+    <string name="pin_erase">Стереть</string>
+    <string name="pin_cancel">Отмена</string>
+    <string name="pin_wrong">Неверный PIN-код</string>
+    <string name="pin_new">Придумай PIN-код (4 цифры)</string>
+    <string name="pin_repeat">Повтори PIN-код</string>
+    <string name="pin_mismatch">PIN-коды не совпали, попробуй ещё раз</string>
+    <string name="pin_enter">Введи PIN-код</string>
+    <string name="pin_exit_kids">PIN-код для выхода из детского режима</string>
+    <string name="kids_pick_hint">Детский режим: ОК — добавить или убрать приложение, затем «Назад»</string>
+    <string name="kids_apps">Приложения детского режима</string>
+    <string name="kids_apps_count">%1$d шт.</string>
+    <string name="kids_none">Не выбрано ни одного приложения — детский режим не включён</string>
+    <string name="kids_on">Детский режим включён</string>
+    <string name="kids_off">Детский режим выключен</string>
+    <string name="kids_exit_tile">Выйти</string>
 </resources>
