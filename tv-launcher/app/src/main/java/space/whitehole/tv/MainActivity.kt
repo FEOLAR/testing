@@ -359,11 +359,11 @@ class MainActivity : Activity() {
             rootView,
             {
                 content.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
-                tileMenu.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+                (tileMenu as? ViewGroup)?.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
             },
             {
                 content.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
-                tileMenu.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
+                (tileMenu as? ViewGroup)?.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
             },
             { v -> setupFocusAnim(v, 1.06f) }
         )
@@ -2039,9 +2039,6 @@ class MainActivity : Activity() {
         refreshWeather(true)
     }
 
-    internal fun addKidsSettingRow(screen: SettingsScreen) {
-        // детский режим — подключается отдельно
-    }
 
     /** «Отвязать телевизор» из настроек (то же, что на экране «Подписка»). */
     internal fun unpairFromSettings() {
