@@ -36,7 +36,9 @@ jobs:
           pip install -r requirements.txt pyinstaller pytest
 
       - name: Unit tests
-        run: python -m pytest -q tests
+        run: |
+          python -m pytest -q -p no:cacheprovider tests *>&1 | Tee-Object -FilePath ci-pytest.log
+          if ($LASTEXITCODE -ne 0) { throw "pytest failed" }
 
       - name: Download Android platform-tools (adb)
         run: |
@@ -57,15 +59,28 @@ jobs:
             --add-data "assets/logo.png;assets" `
             --collect-data customtkinter `
             --hidden-import psutil `
-            main.py
+            main.py *>&1 | Tee-Object -FilePath ci-build.log
+          if ($LASTEXITCODE -ne 0) { throw "pyinstaller failed" }
           Get-Item dist/WhiteHoleSetup.exe | Format-List Name, Length
 
       - name: Self-test of the built exe (bundled adb works)
         run: |
           $out = Join-Path $env:RUNNER_TEMP "selftest.txt"
           $p = Start-Process -FilePath dist/WhiteHoleSetup.exe -ArgumentList @("--selftest", $out) -Wait -PassThru
-          Get-Content $out
+          if (Test-Path $out) { Get-Content $out | Tee-Object -FilePath ci-selftest.log } else { "no selftest output" | Tee-Object -FilePath ci-selftest.log }
           if ($p.ExitCode -ne 0) { throw "selftest failed with exit code $($p.ExitCode)" }
+
+      - name: Report errors as annotations
+        if: failure()
+        shell: bash
+        run: |
+          for f in ci-pytest.log ci-build.log ci-selftest.log; do
+            [ -f "$f" ] || continue
+            body=$(grep -nE "Error|error|FAILED|failed|Traceback|assert|RESULT|adb:" "$f" | head -n 50)
+            [ -n "$body" ] || body=$(tail -n 50 "$f")
+            msg=$(printf '%s\n' "$body" | sed -e 's/%/%25/g' -e 's/\r//g' | awk '{printf "%s%%0A", $0}')
+            echo "::error title=${f}::${msg}"
+          done
 
       - uses: actions/upload-artifact@v4
         with:

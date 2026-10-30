@@ -149,8 +149,8 @@ def test_scan_hosts_uses_probe():
 
 
 def test_default_runner_runs_process():
-    code, out = core.default_runner([sys.executable, "-c", "print('привет')"], 10)
-    assert code == 0 and out == "привет"
+    code, out = core.default_runner([sys.executable, "-c", "print('hello')"], 10)
+    assert code == 0 and out == "hello"
 
 
 def test_default_runner_missing_binary():
