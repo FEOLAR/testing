@@ -118,14 +118,16 @@ def support() -> str:
     )
 
 
-def profile(user, active: bool) -> str:
+def profile(user, active: bool, tv_count: int = 0) -> str:
     devices = getattr(user, "device_limit", None) or settings.device_limit  # реальный лимит из панели
     lines = [title("user", "Моя подписка") + "\n"]
     if active:
         lines.append(f"Статус: {e('ok')} Активна")
         lines.append(f"до <b><i>{fmt_date(user.expire_at)}</i></b>")
         lines.append(f"Осталось дней: <b><i>{days_left(user.expire_at)}</i></b>")
-        lines.append(f"Устройства: до <b><i>{devices}</i></b>\n")
+        lines.append(f"Устройства: до <b><i>{devices}</i></b>" + ("" if tv_count else "\n"))
+        if tv_count:
+            lines.append(f"Телевизоры: <b><i>{tv_count}</i></b>\n")
         lines.append(f"{e('link')} Ссылка-подписка")
         lines.append(f'<pre><code class="language-копировать">{escape(user.sub_url or "")}</code></pre>')
     elif user.expire_at:
@@ -501,3 +503,59 @@ def reminder(kind: str, user) -> str:
     if kind == "30m":
         return f"{e('alert')} Через 30 минут VPN выключится ({when}). Продли подписку, чтобы он продолжил работать."
     return f"{e('no')} Подписка закончилась, VPN выключен. Продли её — настройки в приложении сохранятся."
+
+
+# ---------- телевизор (лаунчер WhiteHole, вход по коду) ----------
+
+def tv_ask(name: str | None, code: str) -> str:
+    return (
+        f"{title('play', 'Подключить телевизор?')}\n\n"
+        f"Телевизор <b>{escape(name or 'Телевизор')}</b> просит доступ к твоей подписке.\n"
+        f"Код: <b><code>{escape(code)}</code></b> — проверь, что он совпадает с кодом на экране ТВ.\n\n"
+        "<i>Когда включишь VPN на телевизоре, он займёт одно место из лимита устройств.</i>"
+    )
+
+
+def tv_no_sub() -> str:
+    return (
+        f"{title('play', 'Подключить телевизор')}\n\n"
+        "Чтобы подключить телевизор, нужна активная подписка.\n\n"
+        "<blockquote>1. Возьми пробный период или выбери тариф\n"
+        "2. Снова наведи камеру на QR-код на телевизоре</blockquote>"
+    )
+
+
+def tv_done(name: str | None) -> str:
+    return (
+        f"{title('ok', 'Телевизор подключён')}\n\n"
+        f"<b>{escape(name or 'Телевизор')}</b> получил твою подписку — на экране ТВ нажми «Подключиться».\n\n"
+        "<i>Отвязать телевизор можно в «Моя подписка».</i>"
+    )
+
+
+def tv_code_ask() -> str:
+    page = settings.site_url("tv")
+    install = (f"1. Установи на телевизор WhiteHole — <a href='{escape(page, quote=True)}'>страница с APK</a>\n"
+               if page else "1. Установи на телевизор приложение WhiteHole\n")
+    return (
+        f"{title('play', 'Подключить телевизор по коду')}\n\n"
+        f"<blockquote>{install}"
+        "2. На ТВ открой WhiteHole → «Войти через Telegram»\n"
+        "3. Пришли сюда <b>6 цифр</b> с экрана телевизора</blockquote>\n\n"
+        "<i>Или просто наведи камеру телефона на QR-код на телевизоре.</i>"
+    )
+
+
+def tv_bad_code() -> str:
+    return f"{e('alert')} Нужен код из 6 цифр с экрана телевизора, например <code>123456</code>."
+
+
+def tv_list(devices: list) -> str:
+    lines = [title("play", "Телевизоры") + "\n"]
+    for d in devices:
+        seen = fmt_date(d.last_seen_at) if d.last_seen_at else "—"
+        lines.append(f"• <b>{escape(d.name or 'Телевизор')}</b> — подключён {fmt_date(d.created_at)}, "
+                     f"был в сети {seen}")
+    lines.append("\n<i>Отвязанный телевизор перестанет получать данные подписки. Чтобы VPN на нём тоже "
+                 "перестал работать, сбрось устройства или замени ссылку.</i>")
+    return "\n".join(lines)

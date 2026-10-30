@@ -521,6 +521,18 @@ padding:14px 22px;border-radius:14px;background:#7c5cff;color:#fff;text-decorati
 <script>var u=%s;document.getElementById('l').href=u;location.href=u;</script></body></html>"""
 
 
+async def routing_link(request: web.Request) -> web.Response:
+    """Тестовый профиль маршрутизации Happ (adblock) или возврат основного (main): страница сама открывает
+    ссылку happ://routing/onadd/… — на телефоне и в браузере телевизора. Ссылки — infra/mk-adblock.py."""
+    import json
+    path = WEB_DIR / "routing" / f"{request.match_info['name']}.txt"
+    if not path.is_file():
+        raise web.HTTPNotFound()
+    u = path.read_text(encoding="utf-8").strip()
+    return web.Response(text=GO_PAGE % json.dumps(u).replace("</", "<\\/"), content_type="text/html",
+                        headers={"Cache-Control": "no-cache"})
+
+
 async def go(request: web.Request) -> web.Response:
     """Переход в VPN-приложение. Telegram не открывает happ:// напрямую, поэтому через браузер."""
     import json
@@ -586,6 +598,7 @@ def build_app(bot: Bot, bot_username: str) -> web.Application:
     r.add_get(f"{PREFIX}/logo.webp", logo)
     r.add_get(f"{PREFIX}/{{name:geoip|geosite}}.dat", geo_file)
     r.add_get(f"{PREFIX}/go", go)
+    r.add_get(f"{PREFIX}/routing/{{name:adblock|main}}", routing_link)
     r.add_get(f"{PREFIX}/wlcheck/", wlcheck_page)
     r.add_post(f"{PREFIX}/wlcheck/report", wlcheck_report)
     r.add_get(f"{PREFIX}/api/me", me)
@@ -606,6 +619,8 @@ def build_app(bot: Bot, bot_username: str) -> web.Application:
     r.add_get(f"{PREFIX}/api/admin/payments", admin_recent)
     r.add_post(f"{PREFIX}/api/admin/give", admin_give_h)
     r.add_post(f"{PREFIX}/api/admin/ban", admin_ban)
+    from . import tv
+    tv.register(app)   # /miniapp/tv: вход на телевизоре по коду и страница установки
     return app
 
 

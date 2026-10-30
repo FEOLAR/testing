@@ -12,7 +12,7 @@ VPN-сервис **WhiteHoleVPN** (раньше GalacticVPN), продажа ч�
 - `bot/app/` — бот (aiogram 3, aiohttp, SQLAlchemy async + PostgreSQL, Redis, docker compose).
 - `infra/add-node.sh` — установка новой ноды (Docker, remnanode NODE_PORT 2222, sub-proxy Caddy :9443, ufw); `bash add-node.sh test` — тест TLS.
 - `infra/bridge-nodes.sh` — мост в РФ: проверка нод, HAProxy (balance source) 443/8443, Caddy для подписки.
-- Последний архив: **whitehole-bot-v51.zip** (29.10, см. раздел «v44–v51»). Ранее: v43 (25.10). До него v42 (22.10, проверка нод из России через мосты + скрытие стран упавших нод). Предыдущий v41. Профиль Happ v3 (infra/happ-routing.txt) вставлен в панель 22.10.
+- Последний архив: **whitehole-bot-v53.zip** (30.10, вход ТВ по коду, ветка `claude/tv-pairing-bot`, см. «v53»). До него v52 (бот-визитка), v51 (29.10, см. раздел «v44–v51»). Ранее: v43 (25.10). До него v42 (22.10, проверка нод из России через мосты + скрытие стран упавших нод). Предыдущий v41. Профиль Happ v3 (infra/happ-routing.txt) вставлен в панель 22.10.
 
 ### Деплой бота (на сервере панели)
 ```
@@ -238,3 +238,14 @@ docker logs --tail 30 vpn-bot
 - Позже: креативы под аудитории, посевы (нет бюджета), стикеры в баннеры FullHD, реклама на ТВ Tuvio через ADB (команды выданы), лаунчер WhiteHole для Android TV (дизайн экранов готов — canvas claude.ai/artifact/MEk9f1w6YFRUav2drX2iU8).
 - Не нужно сейчас: мост по умолчанию / AUTO_EXCLUDE, XHTTP для белых списков, переименование хоста 109.66.241.46.
 - **v52 — бот-визитка** (`app/gateway.py`): `GATEWAY_BOT_TOKEN` в .env → основной процесс слушает второго бота (имя без «VPN»). На любое сообщение: welcome.jpg + текст без слова VPN + кнопки «Открыть WhiteHole» (в основного бота с тем же параметром /start; без параметра — `src_vizitka`, меняется `GATEWAY_SOURCE`) и «Наш канал» (CHANNEL_USERNAME). Описание бота ставится при запуске. `/link метка` показывает и ссылку через визитку.
+
+## v53 — телевизор без ПК и ADB (30.10, ветка `claude/tv-pairing-bot`)
+- **Вход ТВ по коду** (`app/tv.py`, `app/handlers/tv.py`, таблица `tv_devices`: tg_id, sha256 токена, name, created_at, last_seen_at, revoked_at). API без initData:
+  `POST /miniapp/tv/pair/start` → {code (6 цифр, 10 мин), token, bot_link `t.me/<бот>?start=tv_<код>`, expires_in}; лимит 10 кодов / 10 мин с IP (Redis `tv:rl:<ip>`);
+  `GET /miniapp/tv/pair/status?token=` → pending | confirmed (+sub_url, device_name) | expired; `GET /miniapp/tv/me` (заголовок `X-TV-Token`) → sub_url, expire_at, days_left, plan/family, devices_used, device_limit, status (данные из панели, как «Моя подписка»); `POST /miniapp/tv/unpair`.
+  Коды — Redis (`tv:pair:<код>`, `tv:tok:<hash>`), без REDIS_URL — память процесса.
+- Бот: QR → `/start tv_<код>` → «Подключить телевизор?» (Подключить ТВ / Отмена); без подписки — пробник/тарифы (новичку — КПП канала). Вручную: `/tv` или «Инструкция» → «Подключить ТВ по коду» → прислать 6 цифр. «Моя подписка»: строка «Телевизоры: N» и кнопка отвязки — только если есть ТВ. Не больше `TV_DEVICE_LIMIT=5` ТВ на человека (старые отвязываются). Админ: `/tv_devices ID`, `/tv_unlink ID_ТВ`. Метка источника для новых — `tv`.
+- **Установка по ссылке**: страница `/miniapp/tv` (кнопка «Скачать WhiteHole для ТВ» → `/miniapp/tv/whitehole-tv.apk`: файл `app/web/tv/whitehole-tv.apk`, если есть, иначе 302 на релиз GitHub `tv-launcher-latest`; `/miniapp/tv/happ.apk` → 302 на Happ.apk). Обновить локальную копию APK (качать ДО пересборки — образ копирует app/): `mkdir -p /root/vpn-shop/bot/app/web/tv && curl -fL -o /root/vpn-shop/bot/app/web/tv/whitehole-tv.apk https://github.com/FEOLAR/testing/releases/download/tv-launcher-latest/whitehole-tv.apk && cd /root/vpn-shop/bot && docker compose up -d --build`.
+- **Тест блокировки рекламы (только свои устройства)**: `infra/happ-routing-adblock.json/.txt` = профиль v3 + BlockSites (Яндекс an/yabs/adfox/mc/report.appmetrica/mobile.yandexadexchange/adsdk, ad.mail.ru, top-fwz1.mail.ru, doubleclick, googleadservices, googlesyndication, googletagservices, adservice.google.com, app-measurement). Имя профиля «WhiteHole AdBlock test» — основной не затирает. Импорт: открыть `https://77-91-95-53.sslip.io:9443/miniapp/routing/adblock` (телефон/браузер ТВ) → Happ включит профиль; откат — `/miniapp/routing/main` или в Happ выбрать профиль «WhiteHoleVPN». Пересборка ссылок: `python3 infra/mk-adblock.py`. В панель (заголовок routing) пока НЕ ставить.
+- Лаунчер (ветка `claude/whitehole-tv-launcher`): «Войти через Telegram» (QR + код, опрос каждые 3 с), подписка в Happ через `happ://add/<ссылка>`, экран «Подписка» (дни, срок, устройства, QR «Продлить» → `?start=src_tv_renew`, «Отвязать телевизор»).
+- Тест: scratchpad t_tv.py (74 проверки; SQLite + заглушка панели, Postgres в этом контейнере не запускался).

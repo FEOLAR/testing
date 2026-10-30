@@ -110,7 +110,13 @@ async def profile(cb: CallbackQuery):
         except Exception:
             log.exception("panel refresh failed")
     active = is_active(user)
-    await ui.show(cb, texts.profile(user, active), reply_markup=kb.profile(active), photo="profile")
+    try:
+        from ..tv import count_devices
+        tv_count = await count_devices(user.tg_id)
+    except Exception:
+        log.exception("tv devices count failed")
+        tv_count = 0
+    await ui.show(cb, texts.profile(user, active, tv_count), reply_markup=kb.profile(active, tv_count), photo="profile")
     await cb.answer()
 
 

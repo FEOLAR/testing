@@ -96,6 +96,20 @@ class PromoCode(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class TvDevice(Base):
+    """Телевизор, привязанный к подписке через вход по коду (лаунчер WhiteHole для Android TV).
+    Сам токен не храним — только sha256 от него."""
+    __tablename__ = "tv_devices"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tg_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    name: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 # Таблицы, созданные старыми версиями бота, могли остаться без новых колонок и индексов.
 # create_all их не добавляет, поэтому доводим схему сами (идемпотентно).
 MIGRATIONS = [
@@ -135,6 +149,11 @@ MIGRATIONS = [
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS source VARCHAR(40)",
     "CREATE INDEX IF NOT EXISTS ix_users_source ON users (source)",
     "ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_at TIMESTAMPTZ",
+    # v53: телевизоры (вход по коду из лаунчера WhiteHole)
+    "CREATE TABLE IF NOT EXISTS tv_devices (id SERIAL PRIMARY KEY, tg_id BIGINT NOT NULL, "
+    "token_hash VARCHAR(64) NOT NULL UNIQUE, name VARCHAR(64), created_at TIMESTAMPTZ NOT NULL DEFAULT now(), "
+    "last_seen_at TIMESTAMPTZ, revoked_at TIMESTAMPTZ)",
+    "CREATE INDEX IF NOT EXISTS ix_tv_devices_tg_id ON tv_devices (tg_id)",
 ]
 
 

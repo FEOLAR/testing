@@ -37,6 +37,7 @@ HELP = (
     "/give &lt;tg_id&gt; &lt;дни&gt; — выдать/продлить подписку\n"
     "/ban &lt;tg_id&gt; · /unban &lt;tg_id&gt; — отключить/включить VPN\n"
     "/revoke &lt;tg_id&gt; — заменить пользователю ссылку-подписку (старая перестанет работать)\n"
+    "/tv_devices &lt;tg_id&gt; — телевизоры пользователя (лаунчер WhiteHole); /tv_unlink &lt;id ТВ&gt; — отвязать\n"
     "/compensate &lt;дни&gt; — добавить дни всем активным подпискам (например, после сбоя)\n"
     "/restore — найти пользователей с активной подпиской, удалённых из панели; /restore apply — вернуть их с прежними ссылками\n"
     "/refund &lt;id оплаты&gt; — вернуть звёзды и забрать оплаченные дни\n"
@@ -261,6 +262,34 @@ async def top(message: Message, command: CommandObject):
 def _parse_id(command: CommandObject) -> int | None:
     arg = (command.args or "").split()
     return int(arg[0]) if arg and arg[0].isdigit() else None
+
+
+@router.message(Command("tv_devices"))
+async def tv_devices_cmd(message: Message, command: CommandObject):
+    from .. import tv
+    tg_id = _parse_id(command)
+    if not tg_id:
+        return await message.answer("Формат: /tv_devices 123456789")
+    devices = await tv.all_devices(tg_id)
+    if not devices:
+        return await message.answer(f"📺 У <code>{tg_id}</code> нет привязанных телевизоров.")
+    lines = [f"📺 <b>Телевизоры</b> <code>{tg_id}</code>:"]
+    for d in devices:
+        state = f"❌ отвязан {fmt_date(d.revoked_at)}" if d.revoked_at else "✅ активен"
+        seen = fmt_date(d.last_seen_at) if d.last_seen_at else "—"
+        lines.append(f"#{d.id} {escape(d.name or '—')} — {state}; привязан {fmt_date(d.created_at)}, был {seen}")
+    lines.append("\nОтвязать: /tv_unlink ID")
+    await message.answer("\n".join(lines))
+
+
+@router.message(Command("tv_unlink"))
+async def tv_unlink_cmd(message: Message, command: CommandObject):
+    from .. import tv
+    device_id = _parse_id(command)
+    if not device_id:
+        return await message.answer("Формат: /tv_unlink ID (номер из /tv_devices)")
+    ok = await tv.revoke_device(device_id)
+    await message.answer("✅ Телевизор отвязан." if ok else "Не найден или уже отвязан.")
 
 
 @router.message(Command("user"))

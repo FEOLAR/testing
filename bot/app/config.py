@@ -110,6 +110,8 @@ class Settings(BaseSettings):
     outage_compensation_days: int = 2
     outage_min_minutes: int = 60
     referral_bonus_days: int = 7
+    # Телевизоры (лаунчер WhiteHole, вход по коду): сколько ТВ можно привязать к одной подписке
+    tv_device_limit: int = 5
 
     # Platega — оплата картами и СБП. Пусто — способ не показывается.
     platega_merchant_id: str = ""

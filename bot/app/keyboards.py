@@ -82,8 +82,38 @@ def support() -> M:
 def howto() -> M:
     return M(inline_keyboard=[
         [btn("apple", "Happ недоступен в App Store", callback_data="appstore_help")],
+        [btn("play", "Подключить ТВ по коду", callback_data="tv_code")],
         [_back()],
     ])
+
+
+# ---------- телевизор ----------
+
+def tv_confirm(code: str) -> M:
+    return M(inline_keyboard=[
+        [btn("ok", "Подключить ТВ", "success", callback_data=f"tv_ok:{code}")],
+        [btn("no", "Отмена", callback_data="tv_no")],
+    ])
+
+
+def tv_no_sub(show_trial: bool) -> M:
+    rows = []
+    if show_trial and settings.trial_days > 0:
+        rows.append([btn("gift", f"Попробовать {settings.trial_days} дня бесплатно", "success", callback_data="trial")])
+    rows.append([btn("card", "Тарифы", "primary" if show_trial else "success", callback_data="buy")])
+    rows.append([_back("menu", "В меню")])
+    return M(inline_keyboard=rows)
+
+
+def tv_done() -> M:
+    return M(inline_keyboard=[[btn("user", "Моя подписка", callback_data="profile")], [_back("menu", "В меню")]])
+
+
+def tv_list(devices: list) -> M:
+    rows = [[btn("trash", f"Отвязать «{(d.name or 'Телевизор')[:24]}»", callback_data=f"tv_del:{d.id}")]
+            for d in devices[:8]]
+    rows.append([_back("profile", "К подписке")])
+    return M(inline_keyboard=rows)
 
 
 def back(to: str = "menu") -> M:
@@ -129,7 +159,7 @@ def invoice_pay(url: str, payment_id: int) -> M:
     ])
 
 
-def profile(active: bool) -> M:
+def profile(active: bool, tv_count: int = 0) -> M:
     rows = []
     if active and settings.miniapp_url:
         rows.append([btn("app", "Открыть приложение", "primary", web_app=WebAppInfo(url=settings.miniapp_url))])
@@ -137,6 +167,8 @@ def profile(active: bool) -> M:
         rows.append([btn("book", "Инструкция", callback_data="howto")])
         rows.append([btn("refresh", "Сбросить устройства", callback_data="reset_hwid")])
         rows.append([btn("lock", "Заменить ссылку", callback_data="revoke")])
+    if tv_count:
+        rows.append([btn("play", f"Телевизоры ({tv_count}) — отвязать", callback_data="tv_list")])
     rows.append([btn("card", "Продлить", "success" if not active else None, callback_data="buy")])
     rows.append([_back()])
     return M(inline_keyboard=rows)
