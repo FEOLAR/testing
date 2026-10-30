@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">WhiteHole</string>
+    <string name="tab_home">Главная</string>
+    <string name="tab_apps">Приложения</string>
+    <string name="status_on">Защищено</string>
+    <string name="status_off">Не подключено</string>
+    <string name="hero_title">WhiteHole</string>
+    <string name="hero_subtitle">Быстрое и защищённое соединение для телевизора. Российские приложения работают как обычно.</string>
+    <string name="btn_connect">Подключиться</string>
+    <string name="btn_how">Как подключить</string>
+    <string name="row_apps">Приложения</string>
+    <string name="tile_all_apps">Все приложения</string>
+    <string name="tile_settings">Настройки</string>
+    <string name="apps_hint">Удерживайте ОК или нажмите «Меню», чтобы добавить приложение в избранное</string>
+    <string name="apps_loading">Загрузка…</string>
+    <string name="help_title">Как подключить</string>
+    <string name="help_step1">1. Наведи камеру телефона на QR-код</string>
+    <string name="help_step2">2. В боте открой «Моя подписка» и скопируй ссылку</string>
+    <string name="help_step3">3. Установи Happ на телевизор и добавь подписку</string>
+    <string name="help_step4">4. Вернись сюда и нажми «Подключиться»</string>
+    <string name="help_link">t.me/WhiteHoleVPNbot</string>
+    <string name="btn_open_happ">Открыть Happ</string>
+    <string name="btn_back">Назад</string>
+    <string name="fav_added">«%1$s» добавлено в избранное</string>
+    <string name="fav_removed">«%1$s» убрано из избранного</string>
+    <string name="launch_failed">Не удалось открыть приложение</string>
+    <string name="qr_desc">QR-код для перехода в бота</string>
+</resources>
