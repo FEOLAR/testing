@@ -284,10 +284,11 @@ async def subscription_info(tg_id: int) -> dict:
         user = await s.get(User, tg_id)
     if user is None:
         return {"status": "NONE", "sub_url": None, "expire_at": None, "days_left": 0, "family": False,
-                "plan": "regular", "devices_used": 0, "device_limit": settings.device_limit}
+                "plan": "regular", "devices_used": 0, "device_limit": settings.device_limit, "devices": []}
     sub_url, expire, status = user.sub_url, user.expire_at, None
     limit = settings.family_device_limit if user.family else settings.device_limit
     used = None
+    devices: list[dict] = []
     try:
         pu = await panel.get_user(user.panel_username)
         if pu:
@@ -297,7 +298,14 @@ async def subscription_info(tg_id: int) -> dict:
             if pu.get("hwidDeviceLimit") is not None:
                 limit = pu["hwidDeviceLimit"]
             try:
-                used = len(await panel.get_devices(user.panel_username))
+                items = await panel.get_devices(user.panel_username)
+                used = len(items)
+                # v54: список устройств для экрана «Подписка» на ТВ (без HWID — он не нужен телевизору)
+                devices = [{
+                    "platform": d.get("platform"), "os_version": d.get("osVersion"),
+                    "model": d.get("deviceModel"),
+                    "created_at": d.get("createdAt"), "updated_at": d.get("updatedAt"),
+                } for d in items]
             except Exception:
                 used = None
     except Exception:
@@ -316,6 +324,7 @@ async def subscription_info(tg_id: int) -> dict:
         "plan": "family" if user.family else "regular",
         "devices_used": used if used is not None else 0,
         "device_limit": limit,
+        "devices": devices,
     }
 
 

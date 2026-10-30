@@ -12,7 +12,7 @@ VPN-сервис **WhiteHoleVPN** (раньше GalacticVPN), продажа ч�
 - `bot/app/` — бот (aiogram 3, aiohttp, SQLAlchemy async + PostgreSQL, Redis, docker compose).
 - `infra/add-node.sh` — установка новой ноды (Docker, remnanode NODE_PORT 2222, sub-proxy Caddy :9443, ufw); `bash add-node.sh test` — тест TLS.
 - `infra/bridge-nodes.sh` — мост в РФ: проверка нод, HAProxy (balance source) 443/8443, Caddy для подписки.
-- Последний архив: **whitehole-bot-v53.zip** (30.10, вход ТВ по коду, ветка `claude/tv-pairing-bot`, см. «v53»). До него v52 (бот-визитка), v51 (29.10, см. раздел «v44–v51»). Ранее: v43 (25.10). До него v42 (22.10, проверка нод из России через мосты + скрытие стран упавших нод). Предыдущий v41. Профиль Happ v3 (infra/happ-routing.txt) вставлен в панель 22.10.
+- Последний архив: **whitehole-bot-v54.zip** (31.10, список устройств в /miniapp/tv/me для лаунчера, ветка `claude/tv-pairing-bot`, см. «v54»). До него v53 (30.10, вход ТВ по коду, см. «v53»). До него v52 (бот-визитка), v51 (29.10, см. раздел «v44–v51»). Ранее: v43 (25.10). До него v42 (22.10, проверка нод из России через мосты + скрытие стран упавших нод). Предыдущий v41. Профиль Happ v3 (infra/happ-routing.txt) вставлен в панель 22.10.
 
 ### Деплой бота (на сервере панели)
 ```
@@ -249,3 +249,7 @@ docker logs --tail 30 vpn-bot
 - **Тест блокировки рекламы (только свои устройства)**: `infra/happ-routing-adblock.json/.txt` = профиль v3 + BlockSites (Яндекс an/yabs/adfox/mc/report.appmetrica/mobile.yandexadexchange/adsdk, ad.mail.ru, top-fwz1.mail.ru, doubleclick, googleadservices, googlesyndication, googletagservices, adservice.google.com, app-measurement). Имя профиля «WhiteHole AdBlock test» — основной не затирает. Импорт: открыть `https://77-91-95-53.sslip.io:9443/miniapp/routing/adblock` (телефон/браузер ТВ) → Happ включит профиль; откат — `/miniapp/routing/main` или в Happ выбрать профиль «WhiteHoleVPN». Пересборка ссылок: `python3 infra/mk-adblock.py`. В панель (заголовок routing) пока НЕ ставить.
 - Лаунчер (ветка `claude/whitehole-tv-launcher`): «Войти через Telegram» (QR + код, опрос каждые 3 с), подписка в Happ через `happ://add/<ссылка>`, экран «Подписка» (дни, срок, устройства, QR «Продлить» → `?start=src_tv_renew`, «Отвязать телевизор»).
 - Тест: scratchpad t_tv.py (74 проверки; SQLite + заглушка панели, Postgres в этом контейнере не запускался).
+
+## v54 — устройства подписки на ТВ (31.10, ветка `claude/tv-pairing-bot`)
+- `GET /miniapp/tv/me` дополнительно отдаёт `devices: [{platform, os_version, model, created_at, updated_at}]` — те же HWID-устройства из панели, что «Устройства» в мини-аппе (`panel.get_devices`), но без HWID. Лаунчер показывает их на экране «Подписка». Старые лаунчеры поле просто игнорируют.
+- Остальное без изменений; миграций БД нет.
