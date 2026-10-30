@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Iterable, Optional
 
-from . import profiles
+from . import netscan, profiles
 
 # ---------------------------------------------------------------- константы
 
@@ -128,10 +128,24 @@ def default_runner(args: list, timeout: float) -> "tuple[int, str]":
         except OSError as e:
             return -2, f"не удалось запустить {args[0]}: {e}"
         out.seek(0)
-        text = out.read().decode("utf-8", errors="replace")
+        text = _decode(out.read())
     if code == -1:
         text += "\n[таймаут]"
     return code, text.replace("\r\n", "\n").strip()
+
+
+def _decode(raw: bytes) -> str:
+    """adb пишет UTF-8, а ipconfig/arp на русской Windows — в OEM-кодировке (cp866)."""
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        pass
+    for enc in (("oem",) if os.name == "nt" else ()) + ("cp866",):
+        try:
+            return raw.decode(enc)
+        except (UnicodeDecodeError, LookupError):
+            continue
+    return raw.decode("utf-8", errors="replace")
 
 
 @dataclass
@@ -202,7 +216,7 @@ class Adb:
         self.run(["kill-server"], timeout=10)
 
     def devices(self) -> "dict[str, str]":
-        _, out = self.run(["devices"], timeout=15)
+        _, out = self.run(["devices"], timeout=8)
         return parse_devices(out)
 
     def state(self, serial: str) -> Optional[str]:
@@ -210,7 +224,7 @@ class Adb:
 
     def connect(self, serial: str) -> str:
         """Возвращает: ok / unauthorized / refused / unreachable / error."""
-        _, out = self.run(["connect", serial], timeout=15)
+        _, out = self.run(["connect", serial], timeout=5)
         return classify_connect(out)
 
     def disconnect(self, serial: str) -> None:
@@ -592,32 +606,113 @@ class Engine:
         state = self.adb.state(serial) or ("unauthorized" if res == "unauthorized" else "offline")
         return self.device_info(serial, state)
 
+    def light_info(self, serial: str, state: str) -> DeviceInfo:
+        """Быстро: только модель и производитель (полное определение — при выборе ТВ)."""
+        info = DeviceInfo(serial=serial, state=state)
+        if state == "device":
+            info.model = self.adb.getprop(serial, "ro.product.model")
+            info.manufacturer = self.adb.getprop(serial, "ro.product.manufacturer")
+        return info
+
+    def network_plan(self) -> "tuple[list, list[str]]":
+        """Подсети для сканирования (лучшие первыми) и адреса из ARP. Всё пишется в журнал."""
+        ifaces_ipc: list = []
+        arp_ips: list = []
+        if os.name == "nt":
+            code, out = self.adb.runner(["ipconfig"], 10)
+            ifaces_ipc = netscan.parse_ipconfig(out) if code == 0 else []
+            code, out = self.adb.runner(["arp", "-a"], 10)
+            arp_ips = netscan.parse_arp(out) if code == 0 else []
+        ifaces = netscan.merge_ifaces(self.iface_source(), ifaces_ipc)
+        if not ifaces:
+            ifaces = [netscan.Iface("", ip) for ip in local_ipv4_addresses()]
+        for i in ifaces:
+            self.log(f"Адаптер: {i.name or '?'} {i.ip} шлюз={'да' if i.gateway else 'нет'} "
+                     f"{'вкл' if i.up else 'выкл'} оценка={netscan.iface_score(i) if netscan.is_candidate_ip(i.ip) else 'пропуск'}")
+        subnets = netscan.rank_subnets(ifaces)
+        self.log("Подсети для поиска: " + (", ".join(s for s, _ in subnets) or "нет"))
+        self.log("ARP-таблица: " + (", ".join(arp_ips[:30]) or "пусто"))
+        return subnets, arp_ips
+
+    def iface_source(self) -> "list":
+        return netscan.psutil_ifaces()
+
     def discover(self, progress: ProgressCb = _noop_progress,
-                 local_ips: Optional["list[str]"] = None,
-                 scanner: Callable = scan_hosts) -> "list[DeviceInfo]":
-        ips = local_ips if local_ips is not None else local_ipv4_addresses()
-        self.log("Локальные адреса компьютера: " + (", ".join(ips) or "не найдены"))
+                 on_found: Callable[[DeviceInfo], None] = lambda d: None,
+                 cancel: Optional[threading.Event] = None, timeout: float = 20.0,
+                 probe: Optional[Callable[[str], bool]] = None,
+                 plan: Optional[Callable[[], "tuple[list, list[str]]"]] = None) -> "list[DeviceInfo]":
+        """Ищет ТВ: сначала уже известные adb, потом ARP, потом подсети. Не дольше timeout секунд
+        на сканирование (+ до 5 с на подключение). Найденные сразу отдаются в on_found."""
+        cancel = cancel or threading.Event()
+        deadline = self.clock() + timeout
         result: list = []
         seen: set = set()
-        if ips:
-            hosts = subnet_hosts(ips)
-            progress(0.0, f"Ищу телевизоры в сети ({len(hosts)} адресов)…")
-            found = scanner(hosts, progress=progress)
-            self.log("Открыт порт 5555: " + (", ".join(found) or "нигде"))
-            for ip in found:
-                serial = f"{ip}:{ADB_PORT}"
-                try:
-                    dev = self.connect(serial)
-                except SetupError as e:
-                    self.log(f"{ip}: {e.message}")
-                    continue
+        lock = threading.Lock()
+
+        def add(dev: DeviceInfo) -> None:
+            with lock:
+                if dev.serial in seen:
+                    return
+                seen.add(dev.serial)
                 result.append(dev)
-                seen.add(serial)
-        # Уже подключённые (в т.ч. по USB).
-        for serial, st in self.adb.devices().items():
-            if serial not in seen and st in ("device", "unauthorized"):
-                result.append(self.device_info(serial, st))
-        return result
+            on_found(dev)
+
+        # 1) Уже знакомые adb устройства (подключённые ранее или по USB) — показываем сразу.
+        try:
+            for serial, st in self.adb.devices().items():
+                if st in ("device", "unauthorized"):
+                    add(self.light_info(serial, st))
+        except SetupError:
+            raise
+        except Exception as e:
+            self.log(f"adb devices: {e!r}")
+        if cancel.is_set():
+            return result
+
+        # 2) Сеть.
+        progress(None, "Смотрю сетевые адаптеры…")
+        subnets, arp_ips = (plan or self.network_plan)()
+        hosts = netscan.build_host_list(subnets, arp_ips)
+        hosts = [h for h in hosts if f"{h}:{ADB_PORT}" not in seen]
+        self.log(f"Проверяю {len(hosts)} адресов (сначала {len(arp_ips)} из ARP)")
+        progress(0.0, f"Ищу телевизоры в сети ({len(hosts)} адресов)…")
+
+        connect_pool = futures.ThreadPoolExecutor(max_workers=4)
+        connect_futs: list = []
+
+        def connect_one(ip: str) -> None:
+            serial = f"{ip}:{ADB_PORT}"
+            if serial in seen or cancel.is_set():
+                return
+            try:
+                res = self.adb.connect(serial)
+                self.log(f"{ip}: adb connect → {res}")
+                if res not in ("ok", "unauthorized"):
+                    return
+                st = self.adb.state(serial) or ("unauthorized" if res == "unauthorized" else "offline")
+                if st in ("device", "unauthorized"):
+                    add(self.light_info(serial, st))
+            except Exception as e:  # никогда не роняем поиск из-за одного адреса
+                self.log(f"{ip}: {e!r}")
+
+        def on_open(ip: str) -> None:
+            self.log(f"{ip}: отвечает ADB")
+            connect_futs.append(connect_pool.submit(connect_one, ip))
+
+        try:
+            found = netscan.scan(
+                hosts, probe or (lambda ip: netscan.adb_probe(ip)), cancel=cancel, deadline=deadline,
+                clock=self.clock, on_open=on_open,
+                progress=lambda d, t: progress(d / max(t, 1), f"Проверено адресов: {d} из {t}"))
+            if self.clock() >= deadline:
+                self.log(f"Поиск остановлен по таймауту {int(timeout)} с")
+            self.log(f"ADB отвечает на: {', '.join(found) or 'нигде'}")
+            progress(None, "Подключаюсь к найденным…")
+            futures.wait(connect_futs, timeout=8)
+        finally:
+            connect_pool.shutdown(wait=False, cancel_futures=True)
+        return list(result)
 
     def wait_authorized(self, serial: str, timeout: float = 60, cancel: Optional[threading.Event] = None,
                         progress: ProgressCb = _noop_progress) -> DeviceInfo:

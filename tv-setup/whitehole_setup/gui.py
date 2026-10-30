@@ -47,8 +47,11 @@ class App(ctk.CTk):
         self._set_icon(self)
 
         self._q: "queue.Queue[Callable[[], None]]" = queue.Queue()
-        self._busy = False
-        self._cancel = threading.Event()
+        self._lanes: dict = {}               # lane -> token активной фоновой задачи
+        self._token = 0
+        self._cancel = threading.Event()     # ожидание разрешения на ТВ
+        self._scan_cancel = threading.Event()
+        self._found: list = []
         self.device: Optional[DeviceInfo] = None
         self.done: set = set()
         self._action_buttons: list = []
@@ -229,6 +232,9 @@ class App(ctk.CTk):
                                       text_color=ACCENT_TEXT, text_color_disabled="#3b3f45")
         self.btn_scan.pack(side="left", ipadx=24)
         self._action_buttons.append(self.btn_scan)
+        self.btn_cancel = ctk.CTkButton(top, text="Отмена", command=self.on_cancel_scan, height=52,
+                                        corner_radius=26, font=self.f_btn, fg_color=CARD, hover_color=BORDER,
+                                        text_color=TEXT, border_width=1, border_color=BORDER)
         self.btn_next1 = ctk.CTkButton(top, text="Дальше →", command=lambda: self.show_step("install"), height=52,
                                        corner_radius=26, font=self.f_btn, fg_color=CARD, hover_color=BORDER,
                                        text_color=ACCENT, border_width=1, border_color=ACCENT)
@@ -244,7 +250,11 @@ class App(ctk.CTk):
                                      placeholder_text="192.168.1.50", fg_color=CARD, border_color=BORDER)
         self.ip_entry.pack(side="left", padx=10)
         self.ip_entry.bind("<Return>", lambda e: self.on_manual())
-        self._small_button(row, "Подключить", self.on_manual, width=130).pack(side="left")
+        # Ручной ввод не блокируется никогда (даже во время поиска).
+        self.btn_manual = ctk.CTkButton(row, text="Подключить", command=self.on_manual, height=40, width=130,
+                                        corner_radius=20, font=self.f_body, fg_color=CARD, hover_color=BORDER,
+                                        text_color=TEXT, border_width=1, border_color=BORDER)
+        self.btn_manual.pack(side="left")
 
         self.find_msg = self._p(f, "", 5, color=MUTED, pady=(6, 10))
         return f
@@ -392,32 +402,67 @@ class App(ctk.CTk):
     # ------------------------------------------------------------ фон / UI-поток
 
     def _ui(self, fn: Callable, *args) -> None:
+        """Из любого потока: выполнить fn в UI-потоке (через очередь, которую читает _pump)."""
         self._q.put(lambda: fn(*args))
 
     def _pump(self) -> None:
         try:
-            while True:
-                self._q.get_nowait()()
-        except queue.Empty:
-            pass
-        except Exception:
-            self.log(traceback.format_exc())
-        self.after(50, self._pump)
+            for _ in range(500):
+                try:
+                    item = self._q.get_nowait()
+                except queue.Empty:
+                    break
+                try:
+                    item()
+                except Exception:
+                    self._append_log_safe(traceback.format_exc())
+        finally:
+            try:
+                self.after(50, self._pump)
+            except Exception:
+                pass  # окно уже закрыто
 
-    def set_busy(self, busy: bool, text: str = "") -> None:
-        self._busy = busy
-        for b in self._action_buttons + self._dev_buttons + self._ads_checks:
-            b.configure(state="disabled" if busy else "normal")
-        for b in self.step_buttons.values():
-            b.configure(state="disabled" if busy else "normal")
-        if busy:
-            self.progress.grid()
-            self.progress.configure(mode="indeterminate")
-            self.progress.start()
-            self.set_status(text or "Работаю…")
+    @property
+    def _busy(self) -> bool:
+        return bool(self._lanes)
+
+    def _apply_busy(self, text: str = "") -> None:
+        """Включает/выключает кнопки по текущим фоновым задачам. Ручной ввод IP не трогаем."""
+        busy = self._busy
+        for b in self._action_buttons + self._dev_buttons + self._ads_checks + list(self.step_buttons.values()):
+            try:
+                b.configure(state="disabled" if busy else "normal")
+            except Exception:
+                pass  # виджет мог быть уже удалён
+        if "scan" in self._lanes:
+            # во время поиска можно выбрать уже найденный ТВ
+            for b in self._dev_buttons:
+                try:
+                    b.configure(state="normal")
+                except Exception:
+                    pass
+            if not self.btn_cancel.winfo_manager():
+                self.btn_cancel.pack(side="left", padx=12, ipadx=12)
         else:
-            self.progress.stop()
-            self.progress.grid_remove()
+            self.btn_cancel.pack_forget()
+        try:
+            if busy:
+                self.progress.grid()
+                if self.progress.cget("mode") != "indeterminate":
+                    self.progress.configure(mode="indeterminate")
+                self.progress.start()
+                if text:
+                    self.set_status(text)
+            else:
+                self.progress.stop()
+                self.progress.grid_remove()
+        except Exception:
+            pass
+
+    def set_busy(self, busy: bool, text: str = "") -> None:  # совместимость
+        if not busy:
+            self._lanes.clear()
+        self._apply_busy(text)
 
     def set_status(self, text: str, color: str = MUTED) -> None:
         self.status.configure(text=text, text_color=color)
@@ -439,44 +484,82 @@ class App(ctk.CTk):
         self._ui(self.set_progress, frac, text)
 
     def run_task(self, work: Callable[[], object], on_ok: Optional[Callable[[object], None]] = None,
-                 on_err: Optional[Callable[[SetupError], None]] = None, busy_text: str = "") -> None:
-        if self._busy:
-            return
-        self._cancel.clear()
-        self.set_busy(True, busy_text)
+                 on_err: Optional[Callable[[SetupError], None]] = None, busy_text: str = "",
+                 lane: str = "main", watchdog_s: Optional[float] = None,
+                 on_timeout: Optional[Callable[[], None]] = None) -> bool:
+        """Запускает work() в фоне. Состояние «занято» снимается ВСЕГДА: в finally потока,
+        а если поток завис — по сторожевому таймеру watchdog_s."""
+        if lane in self._lanes:
+            return False
+        self._token += 1
+        token = self._token
+        self._lanes[lane] = token
+        self._apply_busy(busy_text or "Работаю…")
 
         def runner():
+            outcome = None
             try:
-                res = work()
+                outcome = ("ok", work())
             except SetupError as e:
                 if e.details:
                     self.log(e.details)
                 self.log("Ошибка: " + e.message)
-                self._ui(self._finish_err, e, on_err)
-                return
-            except Exception as e:  # непредвиденное — показываем по-человечески
+                outcome = ("err", e)
+            except BaseException as e:  # noqa: BLE001 — показываем по-человечески
                 self.log(traceback.format_exc())
-                err = SetupError("Что-то пошло не так. Открой «Подробности» и пришли текст в поддержку.",
-                                 "crash", repr(e))
-                self._ui(self._finish_err, err, on_err)
-                return
-            self._ui(self._finish_ok, res, on_ok)
+                outcome = ("err", SetupError("Что-то пошло не так. Открой «Подробности» и пришли текст "
+                                             "в поддержку.", "crash", repr(e)))
+            finally:
+                if outcome is None:
+                    outcome = ("err", SetupError("Операция прервана.", "crash"))
+                self._ui(self._finish, lane, token, outcome, on_ok, on_err)
 
-        threading.Thread(target=runner, daemon=True).start()
+        threading.Thread(target=runner, daemon=True, name=f"task-{lane}").start()
+        if watchdog_s:
+            def watchdog():
+                if self._lanes.get(lane) == token:
+                    self.log(f"Сторожевой таймер: задача «{lane}» не закончилась за {int(watchdog_s)} с")
+                    if on_timeout:
+                        try:
+                            on_timeout()
+                        except Exception:
+                            self._append_log_safe(traceback.format_exc())
+                    self._finish(lane, token, ("err", SetupError(
+                        "Слишком долго нет ответа. Попробуй ещё раз или введи IP вручную.", "timeout")),
+                        None, on_err)
+            self.after(int(watchdog_s * 1000), watchdog)
+        return True
 
-    def _finish_ok(self, res, on_ok) -> None:
-        self.set_busy(False)
-        self.set_status("Готово", ACCENT)
-        if on_ok:
-            on_ok(res)
+    def _finish(self, lane: str, token: int, outcome, on_ok, on_err) -> None:
+        if self._lanes.get(lane) != token:
+            return  # задачу уже сняли сторожевым таймером — поздний результат игнорируем
+        try:
+            del self._lanes[lane]
+            self._apply_busy()
+        finally:
+            kind, val = outcome
+            try:
+                if kind == "ok":
+                    self.set_status("Готово", ACCENT)
+                    if on_ok:
+                        on_ok(val)
+                else:
+                    self.set_status(val.message, DANGER)
+                    if on_err:
+                        on_err(val)
+                    elif val.kind not in ("cancelled",):
+                        messagebox.showerror("WhiteHole Setup", val.message, parent=self)
+            except Exception:
+                self._append_log_safe(traceback.format_exc())
 
-    def _finish_err(self, err: SetupError, on_err) -> None:
-        self.set_busy(False)
-        self.set_status(err.message, DANGER)
-        if on_err:
-            on_err(err)
-        else:
-            messagebox.showerror("WhiteHole Setup", err.message, parent=self)
+    def _finish_ok(self, res, on_ok) -> None:  # совместимость со старым кодом
+        self._finish("main", self._lanes.get("main", -1), ("ok", res), on_ok, None)
+
+    def _append_log_safe(self, msg: str) -> None:
+        try:
+            self._append_log(msg)
+        except Exception:
+            pass
 
     # ------------------------------------------------------------ журнал
 
@@ -548,22 +631,68 @@ class App(ctk.CTk):
         for w in self.dev_list.winfo_children():
             w.destroy()
 
-    def on_scan(self) -> None:
-        self.find_msg.configure(text="", text_color=MUTED)
-        self._dev_placeholder("Ищу…")
+    SCAN_TIMEOUT = 20.0
 
-        def ok(devs):
-            self._show_devices(devs)
-            ready = [d for d in devs if d.state == "device"]
-            if len(devs) == 1:
+    def on_scan(self) -> None:
+        if "scan" in self._lanes:
+            return
+        self.find_msg.configure(text="", text_color=MUTED)
+        self._found = []
+        self._dev_placeholder("Ищу… Уже подключённые телевизоры появятся сразу.")
+        self._scan_cancel = threading.Event()
+        cancel = self._scan_cancel
+
+        def found(dev: DeviceInfo) -> None:  # из фонового потока
+            self._ui(self._add_found, dev)
+
+        def done(devs):
+            if cancel.is_set():
+                if not self._found:
+                    self._dev_placeholder("Поиск остановлен.")
+                return
+            self._show_devices(self._found or devs)
+            devs = self._found or devs
+            if len(devs) == 1 and self.device is None:
                 self.select_device(devs[0])
             elif not devs:
-                self.find_msg.configure(text="Ничего не нашёл. Нажми «Как включить отладку на ТВ» слева.",
-                                        text_color=WARN)
-            elif ready:
-                self.find_msg.configure(text="Нашёл несколько телевизоров — выбери свой.", text_color=TEXT)
+                self._not_found()
+            elif self.device is None:
+                self.find_msg.configure(text="Нашёл несколько устройств — выбери свой телевизор.", text_color=TEXT)
 
-        self.run_task(lambda: self.engine.discover(progress=self.progress_cb), ok, busy_text="Ищу телевизоры…")
+        def err(e: SetupError):
+            if self._found:
+                self._show_devices(self._found)
+            else:
+                self._not_found(e.message)
+
+        self.run_task(lambda: self.engine.discover(progress=self.progress_cb, on_found=found, cancel=cancel,
+                                                   timeout=self.SCAN_TIMEOUT),
+                      done, err, busy_text="Ищу телевизоры…", lane="scan",
+                      watchdog_s=self.SCAN_TIMEOUT + 25, on_timeout=cancel.set)
+
+    def _add_found(self, dev: DeviceInfo) -> None:
+        if any(d.serial == dev.serial for d in self._found):
+            return
+        self._found.append(dev)
+        self._show_devices(self._found)
+        self._apply_busy()
+
+    def _not_found(self, reason: str = "") -> None:
+        self._dev_placeholder("Телевизор не нашёлся автоматически.")
+        self.find_msg.configure(
+            text=(reason + "\n" if reason else "")
+            + "Введи IP телевизора вручную и нажми «Подключить». Где его посмотреть: на телевизоре "
+              "Настройки → Сеть (и Интернет) → твоя сеть / «О сети» — строка «IP-адрес». "
+              "Ещё проверь, что отладка включена (кнопка «Как включить отладку на ТВ»).",
+            text_color=WARN)
+        try:
+            self.ip_entry.focus_set()
+        except Exception:
+            pass
+
+    def on_cancel_scan(self) -> None:
+        self._scan_cancel.set()
+        self.set_status("Останавливаю поиск…")
 
     def on_manual(self) -> None:
         text = self.ip_entry.get()
@@ -572,29 +701,46 @@ class App(ctk.CTk):
         except SetupError as e:
             self.find_msg.configure(text=e.message, text_color=DANGER)
             return
+        self._scan_cancel.set()  # ручной ввод важнее автопоиска
 
         def err(e: SetupError):
             self.find_msg.configure(text=e.message, text_color=DANGER)
 
-        self.run_task(lambda: self.engine.connect(serial), lambda d: (self._show_devices([d]),
-                                                                       self.select_device(d)),
-                      err, busy_text=f"Подключаюсь к {serial}…")
+        def ok(d: DeviceInfo):
+            self._show_devices([d])
+            self.select_device(d, detected=True)
 
-    def select_device(self, d: DeviceInfo) -> None:
+        if not self.run_task(lambda: self.engine.connect(serial), ok, err,
+                             busy_text=f"Подключаюсь к {serial}…", lane="manual", watchdog_s=40):
+            self.find_msg.configure(text="Уже подключаюсь — подожди пару секунд.", text_color=MUTED)
+
+    def select_device(self, d: DeviceInfo, detected: bool = False) -> None:
+        self._scan_cancel.set()
         if d.state == "unauthorized":
             self.find_msg.configure(text=texts.UNAUTHORIZED, text_color=WARN)
+            self._cancel = threading.Event()
+            cancel = self._cancel
 
             def err(e: SetupError):
                 self.find_msg.configure(text=e.message, text_color=DANGER)
 
-            self.run_task(lambda: self.engine.wait_authorized(d.serial, 60, self._cancel, self.progress_cb),
-                          self._device_ready, err, busy_text="Жду разрешения на телевизоре…")
+            self.run_task(lambda: self.engine.wait_authorized(d.serial, 60, cancel, self.progress_cb),
+                          self._device_ready, err, busy_text="Жду разрешения на телевизоре…",
+                          watchdog_s=90, on_timeout=cancel.set)
             return
         if d.state != "device":
             self.find_msg.configure(text="Телевизор не отвечает (offline). Перезагрузи его и попробуй снова.",
                                     text_color=DANGER)
             return
-        self._device_ready(d)
+        if detected or d.profile_id:
+            self._device_ready(d)
+            return
+
+        def err(e: SetupError):
+            self.find_msg.configure(text=e.message, text_color=DANGER)
+
+        self.run_task(lambda: self.engine.device_info(d.serial, "device"), self._device_ready, err,
+                      busy_text="Определяю модель и платформу…", watchdog_s=90)
 
     def _device_ready(self, d: DeviceInfo) -> None:
         self.device = d
@@ -805,6 +951,7 @@ class App(ctk.CTk):
                 "WhiteHole Setup", "Сейчас идёт работа с телевизором. Точно закрыть?", parent=self):
             return
         self._cancel.set()
+        self._scan_cancel.set()
         t = threading.Thread(target=self._kill_adb, daemon=True)
         t.start()
         t.join(timeout=5)

@@ -32,7 +32,8 @@ class FakeTV:
     """Имитация adb + телевизора: отвечает на команды как настоящий adb."""
 
     def __init__(self, packages=None, state="device", connect_out="connected to " + SERIAL,
-                 home=None, leanback=True, sdk=30, stock_wins=False, props=None):
+                 home=None, leanback=True, sdk=30, stock_wins=False, props=None, listed=True):
+        self.listed = listed  # виден ли ТВ в `adb devices` до `adb connect`
         self.packages = set(packages if packages is not None else YANDEX_PKGS)
         self.disabled = set()
         self.state = state
@@ -53,9 +54,11 @@ class FakeTV:
         a = args[1:]
         self.calls.append(a)
         if a[0] == "connect":
+            if a[1] == SERIAL and ("connected to" in self.connect_out or "authenticate" in self.connect_out):
+                self.listed = True
             return 0, self.connect_out
         if a[0] == "devices":
-            body = f"{SERIAL}\t{self.state}" if self.state else ""
+            body = f"{SERIAL}\t{self.state}" if (self.state and self.listed) else ""
             return 0, "List of devices attached\n" + body
         if a[0] in ("start-server", "kill-server"):
             return 0, ""
@@ -208,10 +211,21 @@ def test_default_runner_missing_binary():
 def test_discover_connects_and_reads_model(tmp_path):
     tv = FakeTV()
     eng = make_engine(tmp_path, tv)
-    devs = eng.discover(local_ips=["192.168.3.7"], scanner=lambda hosts, progress: ["192.168.3.19"])
+    from whitehole_setup import netscan
+    plan = lambda: ([("192.168.3.0/24", netscan.Iface("Wi-Fi", "192.168.3.7", True, True))], ["192.168.3.19"])
+    tv.listed = False
+    probed = []
+
+    def probe(ip):
+        probed.append(ip)
+        return ip == "192.168.3.19"
+    found = []
+    devs = eng.discover(probe=probe, plan=plan, on_found=found.append)
+    assert probed[0] == "192.168.3.19"  # ARP — первым
+    assert found == devs
     assert len(devs) == 1
     d = devs[0]
-    assert d.model == "TD75UFBHH13" and d.manufacturer == "Tuvio" and d.hw_serial == "ABC123"
+    assert d.model == "TD75UFBHH13" and d.manufacturer == "Tuvio"
     assert d.title == "Tuvio TD75UFBHH13 (192.168.3.19)"
     assert ["connect", SERIAL] in tv.calls
 
