@@ -78,6 +78,24 @@ class MainActivity : Activity() {
     private var idleView: View? = null
     private var idleController: ScreensaverController? = null
     private var swallowKeyUp = -1
+
+    // недавние, погода, входы
+    private lateinit var homeScroll: ScrollView
+    private lateinit var homeHero: View
+    private lateinit var topBar: View
+    private lateinit var topWeather: TextView
+    private lateinit var topDate: TextView
+    private lateinit var btnContinue: TextView
+    private lateinit var recentsLabel: View
+    private lateinit var recentsScroll: View
+    private lateinit var recentsRow: LinearLayout
+    private lateinit var inputsLabel: View
+    private lateinit var inputsScroll: View
+    private lateinit var inputsRow: LinearLayout
+    private var lastRecentsSig = "?"
+    private var lastInputsSig = "?"
+    private var weatherLoading = false
+    private var dateFormat = SimpleDateFormat("EE, d MMM", Locale("ru"))
     private val idleCheck = object : Runnable {
         override fun run() {
             checkIdle()
@@ -184,6 +202,7 @@ class MainActivity : Activity() {
     private val clockTick = object : Runnable {
         override fun run() {
             clock.text = clockFormat.format(Date())
+            if (::topDate.isInitialized) topDate.text = dateFormat.format(Date())
             val now = System.currentTimeMillis()
             mainHandler.postDelayed(this, 60_000L - (now % 60_000L) + 50L)
         }
@@ -274,6 +293,23 @@ class MainActivity : Activity() {
         setupFocusAnim(btnMakeHome, 1.06f)
         session = Session(this)
         blackHole = findViewById(R.id.black_hole)
+        homeScroll = findViewById(R.id.page_home)
+        homeHero = findViewById(R.id.home_hero)
+        topBar = findViewById(R.id.top_bar)
+        topWeather = findViewById(R.id.top_weather)
+        topDate = findViewById(R.id.top_date)
+        btnContinue = findViewById(R.id.btn_continue)
+        recentsLabel = findViewById(R.id.recents_label)
+        recentsScroll = findViewById(R.id.recents_scroll)
+        recentsRow = findViewById(R.id.recents_row)
+        inputsLabel = findViewById(R.id.inputs_label)
+        inputsScroll = findViewById(R.id.inputs_scroll)
+        inputsRow = findViewById(R.id.inputs_row)
+        btnContinue.setOnClickListener {
+            val last = prefs.recents().firstOrNull { p -> apps.any { it.packageName == p } }
+            if (last != null) launchApp(last)
+        }
+        setupFocusAnim(btnContinue, 1.06f)
         bgTint = findViewById(R.id.bg_tint)
         val pages = findViewById<ViewGroup>(R.id.pages)
         val settingsView = layoutInflater.inflate(R.layout.page_settings, pages, false)
@@ -377,6 +413,9 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         clockFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+        dateFormat = SimpleDateFormat("EE, d MMM", Locale("ru"))
+        refreshWeather(false)
+        refreshInputs()
         mainHandler.removeCallbacks(clockTick)
         clockTick.run()
         updateVpnStatus()
@@ -434,6 +473,7 @@ class MainActivity : Activity() {
         pickMode = false
         showPage(Page.HOME, true)
         favScroll.scrollTo(0, 0)
+        homeScroll.scrollTo(0, 0)
     }
 
     // Геймпад: B = «Назад» (на случай, если система не переводит B в BACK сама)
@@ -645,6 +685,7 @@ class MainActivity : Activity() {
         refreshBadges()
         if (page == Page.HELP) updateHelpButtons()
         if (page == Page.PAIR && pairDone) showPairDone()
+        buildRecentsRow()
     }
 
     /** Перестроить ряд на главной. focusPkg — какую плитку сфокусировать после. */
@@ -958,10 +999,143 @@ class MainActivity : Activity() {
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         try {
             startActivity(intent)
+            if (pkg != packageName) prefs.addRecent(pkg)
         } catch (e: Exception) {
             Toast.makeText(this, R.string.launch_failed, Toast.LENGTH_SHORT).show()
         }
     }
+
+    // ---------- Недавние, погода, входы ----------
+
+    /** Ряд «Недавние» (до 5 последних открытых из лаунчера) и кнопка «Продолжить». */
+    private fun buildRecentsRow() {
+        val byPkg = HashMap<String, AppEntry>()
+        for (a in apps) byPkg[a.packageName] = a
+        val list = prefs.recents().mapNotNull { byPkg[it] }
+        val kids = isKidsMode()
+        val sig = list.joinToString("|") { it.packageName } + "#" + kids
+        val first = list.firstOrNull()
+        if (first != null && !kids) {
+            btnContinue.text = getString(R.string.btn_continue, first.label)
+            btnContinue.visibility = View.VISIBLE
+        } else {
+            btnContinue.visibility = View.GONE
+        }
+        if (sig == lastRecentsSig) return
+        lastRecentsSig = sig
+        val focusedTag = recentsRow.focusedChild?.tag as? String
+        recentsRow.removeAllViews()
+        val show = list.isNotEmpty() && !kids
+        recentsLabel.visibility = if (show) View.VISIBLE else View.GONE
+        recentsScroll.visibility = if (show) View.VISIBLE else View.GONE
+        if (!show) return
+        for (app in list) {
+            val tile = inflateTile(recentsRow)
+            bindAppTile(tile, app, false)
+            // в «Недавних» удержание убирает из списка
+            tile.setOnLongClickListener {
+                removeRecent(app)
+                true
+            }
+            tile.setOnKeyListener { v, keyCode, event ->
+                handleTileKey(v, keyCode, event) { removeRecent(app) }
+            }
+            recentsRow.addView(tile)
+        }
+        recentsScroll.scrollTo(0, 0)
+        if (focusedTag != null && page == Page.HOME) {
+            for (i in 0 until recentsRow.childCount) {
+                if (recentsRow.getChildAt(i).tag == focusedTag) recentsRow.getChildAt(i).requestFocus()
+            }
+        }
+    }
+
+    private fun removeRecent(app: AppEntry) {
+        val idx = recentsRow.indexOfChild(recentsRow.focusedChild)
+        prefs.removeRecent(app.packageName)
+        Toast.makeText(this, getString(R.string.recent_removed, app.label), Toast.LENGTH_SHORT).show()
+        buildRecentsRow()
+        if (recentsRow.childCount > 0) {
+            recentsRow.getChildAt(maxOf(0, minOf(idx, recentsRow.childCount - 1))).requestFocus()
+        } else {
+            favRow.getChildAt(0)?.requestFocus()
+        }
+    }
+
+    /** Погода в верхней панели: кэш 30 минут, при ошибке просто скрыта. */
+    private fun refreshWeather(force: Boolean) {
+        val city = prefs.cityIndex
+        val cached = if (force) null else Weather.cached(this, city)
+        if (cached != null) {
+            showWeather(city, cached)
+            return
+        }
+        if (weatherLoading) return
+        weatherLoading = true
+        val ctx = applicationContext
+        try {
+            io.execute {
+                val now = Weather.fetch(ctx, city)
+                mainHandler.post {
+                    weatherLoading = false
+                    if (destroyed) return@post
+                    if (now != null) {
+                        showWeather(city, now)
+                    } else if (Weather.cached(ctx, prefs.cityIndex) == null) {
+                        topWeather.visibility = View.GONE
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            weatherLoading = false
+        }
+    }
+
+    private fun showWeather(city: Int, now: Weather.Now) {
+        if (city != prefs.cityIndex) return
+        topWeather.text = Weather.CITIES[city].name + "  " + Weather.format(now)
+        topWeather.visibility = View.VISIBLE
+    }
+
+    /** Ряд «Входы»: HDMI и другие входы телевизора, если система их отдаёт. */
+    private fun refreshInputs() {
+        val ctx = applicationContext
+        try {
+            io.execute {
+                val list = TvInputs.list(ctx)
+                val usable = list.isNotEmpty() && TvInputs.intentFor(list[0]).resolveActivity(ctx.packageManager) != null
+                mainHandler.post { if (!destroyed) buildInputsRow(if (usable) list else emptyList()) }
+            }
+        } catch (e: Exception) {
+            // ignore
+        }
+    }
+
+    private fun buildInputsRow(list: List<TvInputs.Input>) {
+        val kids = isKidsMode()
+        val sig = list.joinToString("|") { it.id + ":" + it.label } + "#" + kids
+        if (sig == lastInputsSig) return
+        lastInputsSig = sig
+        inputsRow.removeAllViews()
+        val show = list.isNotEmpty() && !kids
+        inputsLabel.visibility = if (show) View.VISIBLE else View.GONE
+        inputsScroll.visibility = if (show) View.VISIBLE else View.GONE
+        if (!show) return
+        for (input in list) {
+            val tile = makeActionTile(inputsRow, R.drawable.ic_input, input.label) {
+                try {
+                    startActivity(TvInputs.intentFor(input))
+                } catch (e: Exception) {
+                    Toast.makeText(this, R.string.input_failed, Toast.LENGTH_LONG).show()
+                }
+            }
+            tile.tag = "action:input:" + input.id
+            inputsRow.addView(tile)
+        }
+    }
+
+    /** Детский режим (подключается отдельно). */
+    private fun isKidsMode(): Boolean = false
 
     internal fun openSettings() {
         try {
@@ -1450,6 +1624,7 @@ class MainActivity : Activity() {
     /** Фокус на плитке приложения на главной → фон плавно окрашивается в её цвет. */
     private fun onFocusMoved(v: View?) {
         if (destroyed || page != Page.HOME || v == null) return
+        if (isInside(v, homeHero) || isInside(v, topBar)) homeScroll.smoothScrollTo(0, 0)
         val pkg = v.tag as? String
         if (pkg == null || pkg.startsWith("action:")) {
             tintTo(0)
@@ -1469,6 +1644,15 @@ class MainActivity : Activity() {
         val color = if (dom != null) Color.argb(0x55, Color.red(dom), Color.green(dom), Color.blue(dom)) else 0
         tintCache[pkg] = color
         tintTo(color)
+    }
+
+    private fun isInside(v: View, parent: View): Boolean {
+        var cur: View? = v
+        while (cur != null) {
+            if (cur === parent) return true
+            cur = cur.parent as? View
+        }
+        return false
     }
 
     private fun tintTo(color: Int) {
@@ -1580,7 +1764,8 @@ class MainActivity : Activity() {
     }
 
     internal fun onCitySettingChanged() {
-        // погода — подключается отдельно
+        topWeather.visibility = View.GONE
+        refreshWeather(true)
     }
 
     internal fun addKidsSettingRow(screen: SettingsScreen) {

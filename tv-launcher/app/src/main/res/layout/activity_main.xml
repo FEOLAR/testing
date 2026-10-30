@@ -83,6 +83,27 @@
                 android:layout_weight="1" />
 
             <TextView
+                android:id="@+id/top_weather"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginRight="18dp"
+                android:ellipsize="end"
+                android:maxWidth="300dp"
+                android:singleLine="true"
+                android:textColor="@color/text_secondary"
+                android:textSize="15sp"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/top_date"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginRight="16dp"
+                android:singleLine="true"
+                android:textColor="@color/text_secondary"
+                android:textSize="15sp" />
+
+            <TextView
                 android:id="@+id/clock"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -100,18 +121,27 @@
             android:clipToPadding="false">
 
             <!-- Главная -->
-            <LinearLayout
+            <ScrollView
                 android:id="@+id/page_home"
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:clipChildren="false"
                 android:clipToPadding="false"
+                android:fillViewport="true"
+                android:scrollbars="none">
+
+            <LinearLayout
+                android:id="@+id/home_column"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:clipChildren="false"
+                android:clipToPadding="false"
                 android:orientation="vertical">
 
                 <LinearLayout
+                    android:id="@+id/home_hero"
                     android:layout_width="match_parent"
-                    android:layout_height="0dp"
-                    android:layout_weight="1"
+                    android:layout_height="300dp"
                     android:clipChildren="false"
                     android:clipToPadding="false"
                     android:gravity="bottom|left"
@@ -234,6 +264,16 @@
                             android:layout_marginLeft="16dp"
                             android:nextFocusUp="@id/tab_home"
                             android:text="@string/btn_how" />
+
+                        <TextView
+                            android:id="@+id/btn_continue"
+                            style="@style/WhButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginLeft="16dp"
+                            android:maxWidth="250dp"
+                            android:nextFocusUp="@id/tab_home"
+                            android:visibility="gone" />
                     </LinearLayout>
                 </LinearLayout>
 
@@ -278,7 +318,78 @@
                         android:paddingRight="42dp"
                         android:paddingBottom="10dp" />
                 </HorizontalScrollView>
+
+                <!-- Недавние -->
+                <TextView
+                    android:id="@+id/recents_label"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginLeft="48dp"
+                    android:fontFamily="sans-serif-medium"
+                    android:text="@string/row_recents"
+                    android:textColor="@color/white"
+                    android:textSize="18sp"
+                    android:visibility="gone" />
+
+                <HorizontalScrollView
+                    android:id="@+id/recents_scroll"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="12dp"
+                    android:clipChildren="false"
+                    android:clipToPadding="false"
+                    android:scrollbars="none"
+                    android:visibility="gone">
+
+                    <LinearLayout
+                        android:id="@+id/recents_row"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:clipChildren="false"
+                        android:clipToPadding="false"
+                        android:orientation="horizontal"
+                        android:paddingLeft="42dp"
+                        android:paddingTop="10dp"
+                        android:paddingRight="42dp"
+                        android:paddingBottom="10dp" />
+                </HorizontalScrollView>
+
+                <!-- Входы HDMI -->
+                <TextView
+                    android:id="@+id/inputs_label"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginLeft="48dp"
+                    android:fontFamily="sans-serif-medium"
+                    android:text="@string/row_inputs"
+                    android:textColor="@color/white"
+                    android:textSize="18sp"
+                    android:visibility="gone" />
+
+                <HorizontalScrollView
+                    android:id="@+id/inputs_scroll"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="24dp"
+                    android:clipChildren="false"
+                    android:clipToPadding="false"
+                    android:scrollbars="none"
+                    android:visibility="gone">
+
+                    <LinearLayout
+                        android:id="@+id/inputs_row"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:clipChildren="false"
+                        android:clipToPadding="false"
+                        android:orientation="horizontal"
+                        android:paddingLeft="42dp"
+                        android:paddingTop="10dp"
+                        android:paddingRight="42dp"
+                        android:paddingBottom="10dp" />
+                </HorizontalScrollView>
             </LinearLayout>
+            </ScrollView>
 
             <!-- Все приложения -->
             <LinearLayout

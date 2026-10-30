@@ -113,4 +113,9 @@
     <string name="dream_label">WhiteHole — заставка</string>
     <string name="set_dream">Системная заставка WhiteHole</string>
     <string name="set_dream_value">открыть</string>
+    <string name="row_recents">Недавние</string>
+    <string name="row_inputs">Входы</string>
+    <string name="btn_continue">Продолжить: %1$s</string>
+    <string name="input_failed">Не удалось открыть вход — на этом устройстве нет приложения «ТВ»</string>
+    <string name="recent_removed">«%1$s» убрано из недавних</string>
 </resources>
