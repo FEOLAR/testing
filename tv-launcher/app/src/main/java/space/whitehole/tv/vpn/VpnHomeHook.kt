@@ -7,6 +7,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import space.whitehole.tv.ConnectAnimator
+import space.whitehole.tv.ConnectState
 import space.whitehole.tv.R
 import space.whitehole.tv.Session
 
@@ -19,6 +20,8 @@ class VpnHomeHook(
     private val btnConnect: TextView,
     private val statusDot: View,
     private val statusText: TextView,
+    /** Анимация подключения главного экрана (HomeConnectAnimator) — общий вход для Happ и встроенного VPN. */
+    private val animator: ConnectAnimator?,
     private val onChanged: () -> Unit,
 ) {
     /** Встроенный VPN доступен (Android 7+). Иначе лаунчер работает по-старому, через Happ. */
@@ -108,8 +111,15 @@ class VpnHomeHook(
         if (s == VpnStatus.ERROR && prev != null && VpnState.message.isNotEmpty()) {
             Toast.makeText(activity, VpnState.message, Toast.LENGTH_LONG).show()
         }
-        if (prev != null) ConnectAnimator.play(s.name)
+        if (prev != null) animator?.play(toConnectState(s))
         onChanged()
+    }
+
+    private fun toConnectState(s: VpnStatus): ConnectState = when (s) {
+        VpnStatus.DISCONNECTED -> ConnectState.IDLE
+        VpnStatus.CONNECTING -> ConnectState.CONNECTING
+        VpnStatus.CONNECTED -> ConnectState.CONNECTED
+        VpnStatus.ERROR -> ConnectState.FAILED
     }
 
     private fun createServerButton(): TextView? {

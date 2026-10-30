@@ -72,6 +72,19 @@
             </intent-filter>
         </activity>
 
+        <!-- Системная заставка «WhiteHole — заставка» -->
+        <service
+            android:name=".ScreensaverService"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/dream_label"
+            android:permission="android.permission.BIND_DREAM_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.dreams.DreamService" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </service>
+
         <provider
             android:name=".ApkProvider"
             android:authorities="space.whitehole.tv.apk"

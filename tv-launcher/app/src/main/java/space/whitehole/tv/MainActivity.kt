@@ -1,6 +1,8 @@
 package space.whitehole.tv
 
 import android.app.Activity
+import android.animation.ArgbEvaluator
+import android.animation.ValueAnimator
 import android.app.ActivityManager
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -26,8 +28,10 @@ import android.provider.Settings
 import android.util.DisplayMetrics
 import android.util.Log
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.DecelerateInterpolator
 import android.widget.GridLayout
 import android.widget.HorizontalScrollView
 import android.widget.ImageView
@@ -52,10 +56,73 @@ import space.whitehole.tv.vpn.VpnHomeHook
 
 class MainActivity : Activity() {
 
-    private enum class Page { HOME, APPS, HELP, PAIR, SUB }
+    private enum class Page { HOME, APPS, HELP, PAIR, SUB, SETTINGS }
 
-    private lateinit var session: Session
+    internal lateinit var session: Session
     private lateinit var vpnHook: VpnHomeHook // встроенный VPN (пакет vpn)
+    internal lateinit var prefs: Prefs
+    internal lateinit var choiceDialog: ChoiceDialog
+    private lateinit var settings: SettingsScreen
+    private lateinit var blackHole: BlackHoleView
+    private lateinit var bgTint: View
+    private lateinit var connectAnim: HomeConnectAnimator
+
+    /** Анимация кнопки «Подключиться» — её вызывает и путь через Happ, и встроенный VPN. */
+    internal val connectAnimator: ConnectAnimator get() = connectAnim
+    private var lastVpnActive: Boolean? = null
+    private val tintCache = HashMap<String, Int>()
+    private var tintTarget = 0
+    private var tintCurrent = 0
+    private var tintAnimator: ValueAnimator? = null
+
+    // заставка при простое
+    private var lastInputAt = System.currentTimeMillis()
+    private var idleView: View? = null
+    private var idleController: ScreensaverController? = null
+    private var swallowKeyUp = -1
+
+    // недавние, погода, входы
+    private lateinit var homeScroll: ScrollView
+    private lateinit var homeHero: View
+    private lateinit var topBar: View
+    private lateinit var topWeather: TextView
+    private lateinit var topDate: TextView
+    private lateinit var btnContinue: TextView
+    private lateinit var recentsLabel: View
+    private lateinit var recentsScroll: View
+    private lateinit var recentsRow: LinearLayout
+    private lateinit var inputsLabel: View
+    private lateinit var inputsScroll: View
+    private lateinit var inputsRow: LinearLayout
+    private var lastRecentsSig = "?"
+    private var lastInputsSig = "?"
+    private var weatherLoading = false
+    private var dateFormat = SimpleDateFormat("EE, d MMM", Locale("ru"))
+
+    // пинг и напоминание о продлении
+    private lateinit var pingCard: View
+    private lateinit var pingDot: View
+    private lateinit var pingText: TextView
+    private lateinit var renewCard: View
+    private lateinit var renewTitle: TextView
+    private lateinit var subDeviceList: TextView
+    private var pingRunning = false
+    private var kidsPick = false
+    private lateinit var pinPad: PinPad
+    private lateinit var rowHint: View
+    private var renewQrDone = false
+    private val pingTick = object : Runnable {
+        override fun run() {
+            measurePing()
+            mainHandler.postDelayed(this, 60_000L)
+        }
+    }
+    private val idleCheck = object : Runnable {
+        override fun run() {
+            checkIdle()
+            mainHandler.postDelayed(this, 20_000L)
+        }
+    }
     private lateinit var mainContent: View
     private lateinit var btnSub: TextView
     private lateinit var subLine: TextView
@@ -96,6 +163,7 @@ class MainActivity : Activity() {
     private class Visual(val drawable: Drawable?, val banner: Boolean)
 
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val focusInterpolator = DecelerateInterpolator(1.6f)
     private val io: ExecutorService = Executors.newFixedThreadPool(2)
     private val visualCache = HashMap<String, Visual>()
 
@@ -155,6 +223,7 @@ class MainActivity : Activity() {
     private val clockTick = object : Runnable {
         override fun run() {
             clock.text = clockFormat.format(Date())
+            if (::topDate.isInitialized) topDate.text = dateFormat.format(Date())
             val now = System.currentTimeMillis()
             mainHandler.postDelayed(this, 60_000L - (now % 60_000L) + 50L)
         }
@@ -200,6 +269,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         favorites = Favorites(this)
+        prefs = Prefs(this)
 
         heroBg = findViewById(R.id.hero_bg)
         dim = findViewById(R.id.dim)
@@ -243,6 +313,64 @@ class MainActivity : Activity() {
         setupFocusAnim(notHomeChip, 1.06f)
         setupFocusAnim(btnMakeHome, 1.06f)
         session = Session(this)
+        blackHole = findViewById(R.id.black_hole)
+        homeScroll = findViewById(R.id.page_home)
+        homeHero = findViewById(R.id.home_hero)
+        topBar = findViewById(R.id.top_bar)
+        topWeather = findViewById(R.id.top_weather)
+        topDate = findViewById(R.id.top_date)
+        btnContinue = findViewById(R.id.btn_continue)
+        rowHint = findViewById(R.id.row_hint)
+        recentsLabel = findViewById(R.id.recents_label)
+        recentsScroll = findViewById(R.id.recents_scroll)
+        recentsRow = findViewById(R.id.recents_row)
+        inputsLabel = findViewById(R.id.inputs_label)
+        inputsScroll = findViewById(R.id.inputs_scroll)
+        inputsRow = findViewById(R.id.inputs_row)
+        pingCard = findViewById(R.id.ping_card)
+        pingDot = findViewById(R.id.ping_dot)
+        pingText = findViewById(R.id.ping_text)
+        renewCard = findViewById(R.id.renew_card)
+        renewTitle = findViewById(R.id.renew_title)
+        subDeviceList = findViewById(R.id.sub_device_list)
+        val btnRenewHide = findViewById<TextView>(R.id.btn_renew_hide)
+        btnRenewHide.setOnClickListener {
+            prefs.renewDismissedAt = System.currentTimeMillis()
+            renewCard.visibility = View.GONE
+            btnConnect.requestFocus()
+        }
+        setupFocusAnim(btnRenewHide, 1.06f)
+        btnContinue.setOnClickListener {
+            val last = prefs.recents().firstOrNull { p -> apps.any { it.packageName == p } }
+            if (last != null) launchApp(last)
+        }
+        setupFocusAnim(btnContinue, 1.06f)
+        bgTint = findViewById(R.id.bg_tint)
+        val pages = findViewById<ViewGroup>(R.id.pages)
+        val settingsView = layoutInflater.inflate(R.layout.page_settings, pages, false)
+        pages.addView(settingsView)
+        settings = SettingsScreen(this, settingsView)
+        val rootView = findViewById<ViewGroup>(R.id.root)
+        choiceDialog = ChoiceDialog(
+            rootView,
+            { content.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS },
+            { content.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS },
+            { v -> setupFocusAnim(v, 1.02f) }
+        )
+        pinPad = PinPad(
+            rootView,
+            {
+                content.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+                (tileMenu as? ViewGroup)?.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+            },
+            {
+                content.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
+                (tileMenu as? ViewGroup)?.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
+            },
+            { v -> setupFocusAnim(v, 1.06f) }
+        )
+        connectAnim = HomeConnectAnimator(blackHole, findViewById(R.id.status_chip), btnConnect) { prefs.animations }
+        rootView.viewTreeObserver.addOnGlobalFocusChangeListener { _, newFocus -> onFocusMoved(newFocus) }
         mainContent = findViewById(R.id.content)
         btnSub = findViewById(R.id.btn_sub)
         subLine = findViewById(R.id.sub_line)
@@ -320,7 +448,7 @@ class MainActivity : Activity() {
         loadHeroBackground(realMetrics.widthPixels, realMetrics.heightPixels)
 
         connectivity = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-        vpnHook = VpnHomeHook(this, btnConnect, statusDot, statusText) {
+        vpnHook = VpnHomeHook(this, btnConnect, statusDot, statusText, connectAnim) {
             if (!destroyed) {
                 updateVpnStatus()
                 updateHomeUi()
@@ -331,18 +459,29 @@ class MainActivity : Activity() {
 
         showPage(Page.HOME, false)
         btnConnect.requestFocus()
+        applyAnimationsSetting()
         reloadApps()
     }
 
     override fun onResume() {
         super.onResume()
         clockFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+        dateFormat = SimpleDateFormat("EE, d MMM", Locale("ru"))
+        refreshWeather(false)
+        refreshInputs()
         mainHandler.removeCallbacks(clockTick)
         clockTick.run()
         vpnHook.onResume()
         updateVpnStatus()
         reloadApps()
         resumed = true
+        lastInputAt = System.currentTimeMillis()
+        mainHandler.removeCallbacks(idleCheck)
+        mainHandler.postDelayed(idleCheck, 20_000L)
+        mainHandler.removeCallbacks(pingTick)
+        mainHandler.post(pingTick)
+        updateVpnStatus()
+        updateBlackHoleRunning()
         updateDefaultHomeUi()
         updateHomeUi()
         refreshMe(false)
@@ -354,6 +493,10 @@ class MainActivity : Activity() {
     override fun onPause() {
         super.onPause()
         resumed = false
+        mainHandler.removeCallbacks(idleCheck)
+        mainHandler.removeCallbacks(pingTick)
+        hideIdle()
+        updateBlackHoleRunning()
         mainHandler.removeCallbacks(clockTick)
     }
 
@@ -388,6 +531,7 @@ class MainActivity : Activity() {
         pickMode = false
         showPage(Page.HOME, true)
         favScroll.scrollTo(0, 0)
+        homeScroll.scrollTo(0, 0)
     }
 
     // Геймпад: B = «Назад» (на случай, если система не переводит B в BACK сама)
@@ -407,7 +551,7 @@ class MainActivity : Activity() {
     // ---------- Главный экран системы ----------
 
     /** Мы ли сейчас домашний экран по умолчанию. */
-    private fun isDefaultHome(): Boolean {
+    internal fun isDefaultHome(): Boolean {
         return try {
             val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
             val ri = packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)
@@ -419,13 +563,13 @@ class MainActivity : Activity() {
 
     private fun updateDefaultHomeUi() {
         val isHome = isDefaultHome()
-        notHomeChip.visibility = if (isHome) View.GONE else View.VISIBLE
+        notHomeChip.visibility = if (isHome || isKidsMode()) View.GONE else View.VISIBLE
         makeHomeNote.visibility = if (isHome) View.GONE else View.VISIBLE
         btnMakeHome.visibility = if (isHome) View.GONE else View.VISIBLE
     }
 
     /** Настройки «Главный экран», если есть; иначе общие настройки. */
-    private fun openHomeSettings() {
+    internal fun openHomeSettings() {
         val home = Intent(Settings.ACTION_HOME_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         try {
             if (home.resolveActivity(packageManager) != null) {
@@ -441,6 +585,18 @@ class MainActivity : Activity() {
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         // На главном экране «Назад» ничего не делает (мы — домашний экран)
+        if (pinPad.isShowing) {
+            pinPad.cancel()
+            return
+        }
+        if (choiceDialog.isShowing) {
+            choiceDialog.dismiss()
+            return
+        }
+        if (kidsPick && page == Page.APPS) {
+            finishKidsPick()
+            return
+        }
         if (tileMenu.visibility == View.VISIBLE) {
             hideTileMenu(true)
             return
@@ -456,9 +612,14 @@ class MainActivity : Activity() {
     // ---------- Страницы ----------
 
     private fun showPage(p: Page, moveFocus: Boolean) {
+        // в детском режиме доступна только главная
+        if (isKidsMode() && p != Page.HOME) return
         val prev = page
         page = p
-        if (p != Page.APPS) pickMode = false
+        if (p != Page.APPS) {
+            pickMode = false
+            kidsPick = false
+        }
         if (prev == Page.PAIR && p != Page.PAIR) stopPairing()
         if (p != Page.SUB) disarmUnpair()
         val full = p == Page.PAIR || p == Page.SUB
@@ -468,10 +629,15 @@ class MainActivity : Activity() {
         pageHome.visibility = if (p == Page.HOME) View.VISIBLE else View.GONE
         pageApps.visibility = if (p == Page.APPS) View.VISIBLE else View.GONE
         pageHelp.visibility = if (p == Page.HELP) View.VISIBLE else View.GONE
+        settings.page.visibility = if (p == Page.SETTINGS) View.VISIBLE else View.GONE
+        if (prev == Page.SETTINGS && p != Page.SETTINGS) settings.onHidden()
+        if (p != Page.HOME) tintTo(0)
+        updateBlackHoleRunning()
+        if (prev != p) animatePageIn(pageViewFor(p))
         tabHome.isSelected = p == Page.HOME
         tabApps.isSelected = p == Page.APPS
-        appsHint.setText(if (pickMode) R.string.pick_hint else R.string.apps_hint)
-        appsHint.setTextColor(if (pickMode) Color.WHITE else Color.parseColor("#8A8F99"))
+        appsHint.setText(if (kidsPick) R.string.kids_pick_hint else if (pickMode) R.string.pick_hint else R.string.apps_hint)
+        appsHint.setTextColor(if (pickMode || kidsPick) Color.WHITE else Color.parseColor("#8A8F99"))
         dim.animate().alpha(if (p == Page.HOME) 0f else 0.82f).setDuration(200).start()
 
         if (p == Page.HELP) {
@@ -487,7 +653,7 @@ class MainActivity : Activity() {
 
         if (!moveFocus) return
         when (p) {
-            Page.HOME -> btnConnect.requestFocus()
+            Page.HOME -> if (isKidsMode()) favRow.getChildAt(0)?.requestFocus() else btnConnect.requestFocus()
             Page.APPS -> {
                 appsScroll.scrollTo(0, 0)
                 val first = appsGrid.getChildAt(0)
@@ -502,6 +668,7 @@ class MainActivity : Activity() {
             }
             Page.PAIR -> btnPairMain.requestFocus()
             Page.SUB -> btnSubBack.requestFocus()
+            Page.SETTINGS -> settings.rebuild(null)
         }
     }
 
@@ -536,11 +703,13 @@ class MainActivity : Activity() {
     private fun connectHapp() {
         val p = happPackage ?: AppRepository.findHapp(this, apps)
         if (p == null) {
+            connectAnim.play(ConnectState.FAILED)
             Toast.makeText(this, R.string.happ_missing, Toast.LENGTH_LONG).show()
-            showPage(Page.HELP, true)
+            mainHandler.postDelayed({ if (!destroyed && page == Page.HOME) showPage(Page.HELP, true) }, 450L)
             return
         }
         happPackage = p
+        if (!isVpnActive()) connectAnim.play(ConnectState.CONNECTING)
         val sub = session.subUrl
         if (!sub.isNullOrEmpty() && sub != session.pushedSubUrl) {
             if (Happ.pushSubscription(this, sub, p)) {
@@ -580,7 +749,7 @@ class MainActivity : Activity() {
             lastAppsSig = appsSig
             buildAppsGrid()
         }
-        val favSig = favorites.get().joinToString("|") + "#" + appsSig
+        val favSig = (if (isKidsMode()) "kids#" + prefs.kidsApps().joinToString("|") else favorites.get().joinToString("|")) + "#" + appsSig
         if (favSig != lastFavSig) {
             lastFavSig = favSig
             if (tileMenu.visibility != View.VISIBLE) buildFavRow(null)
@@ -591,6 +760,7 @@ class MainActivity : Activity() {
         refreshBadges()
         if (page == Page.HELP) updateHelpButtons()
         if (page == Page.PAIR && pairDone) showPairDone()
+        buildRecentsRow()
     }
 
     /** Перестроить ряд на главной. focusPkg — какую плитку сфокусировать после. */
@@ -601,11 +771,27 @@ class MainActivity : Activity() {
 
         val byPkg = HashMap<String, AppEntry>()
         for (a in apps) byPkg[a.packageName] = a
-        for (pkg in favorites.get()) {
+        val kids = isKidsMode()
+        for (pkg in if (kids) prefs.kidsApps() else favorites.get()) {
             val app = byPkg[pkg] ?: continue
             val tile = inflateTile(favRow)
             bindAppTile(tile, app, true)
             favRow.addView(tile)
+        }
+        if (kids) {
+            val exit = makeActionTile(favRow, R.drawable.ic_lock, getString(R.string.kids_exit_tile)) { askExitKids() }
+            exit.tag = "action:kids_exit"
+            favRow.addView(exit)
+            lastFavSig = "kids#" + prefs.kidsApps().joinToString("|") + "#" + lastAppsSig
+            if (page == Page.HOME) {
+                val cf = currentFocus
+                if (focusedIndex >= 0) {
+                    favRow.getChildAt(minOf(focusedIndex, favRow.childCount - 1))?.requestFocus()
+                } else if (cf == null || !cf.isShown) {
+                    favRow.getChildAt(0)?.requestFocus()
+                }
+            }
+            return
         }
         val addTile = makeActionTile(favRow, R.drawable.ic_add, getString(R.string.tile_add)) { openPicker() }
         addTile.tag = TAG_ADD
@@ -615,7 +801,7 @@ class MainActivity : Activity() {
             showPage(Page.APPS, true)
         })
         favRow.addView(makeActionTile(favRow, R.drawable.ic_settings, getString(R.string.tile_settings)) {
-            openSettings()
+            showPage(Page.SETTINGS, true)
         })
         lastFavSig = favorites.get().joinToString("|") + "#" + lastAppsSig
 
@@ -660,7 +846,7 @@ class MainActivity : Activity() {
 
     /** Галочка на плитках в сетке у приложений, которые уже на главном. */
     private fun refreshBadges() {
-        val favs = HashSet(favorites.get())
+        val favs = HashSet(if (kidsPick) prefs.kidsApps() else favorites.get())
         for (i in 0 until appsGrid.childCount) {
             val c = appsGrid.getChildAt(i)
             val pkg = c.tag as? String ?: continue
@@ -711,7 +897,10 @@ class MainActivity : Activity() {
         }
 
         tile.setOnClickListener {
-            if (!inHomeRow && pickMode) {
+            if (!inHomeRow && kidsPick && page == Page.APPS) {
+                prefs.toggleKidsApp(app.packageName)
+                refreshBadges()
+            } else if (!inHomeRow && pickMode) {
                 pickApp(app)
             } else {
                 launchApp(app.packageName)
@@ -724,7 +913,7 @@ class MainActivity : Activity() {
         tile.setOnKeyListener { v, keyCode, event ->
             handleTileKey(v, keyCode, event) { onTileLongPress(app, inHomeRow) }
         }
-        setupFocusAnim(tile, 1.06f)
+        setupFocusAnim(tile, 1.08f)
     }
 
     /**
@@ -777,6 +966,7 @@ class MainActivity : Activity() {
     }
 
     private fun onTileLongPress(app: AppEntry, inHomeRow: Boolean) {
+        if (isKidsMode() || kidsPick) return
         if (inHomeRow) {
             showTileMenu(app)
         } else {
@@ -813,7 +1003,7 @@ class MainActivity : Activity() {
         tile.findViewById<TextView>(R.id.tile_label).text = text
         tile.contentDescription = text
         tile.setOnClickListener { action() }
-        setupFocusAnim(tile, 1.06f)
+        setupFocusAnim(tile, 1.08f)
         return tile
     }
 
@@ -904,12 +1094,332 @@ class MainActivity : Activity() {
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         try {
             startActivity(intent)
+            if (pkg != packageName) prefs.addRecent(pkg)
         } catch (e: Exception) {
             Toast.makeText(this, R.string.launch_failed, Toast.LENGTH_SHORT).show()
         }
     }
 
-    private fun openSettings() {
+    // ---------- Недавние, погода, входы ----------
+
+    /** Ряд «Недавние» (до 5 последних открытых из лаунчера) и кнопка «Продолжить». */
+    private fun buildRecentsRow() {
+        val byPkg = HashMap<String, AppEntry>()
+        for (a in apps) byPkg[a.packageName] = a
+        val list = prefs.recents().mapNotNull { byPkg[it] }
+        val kids = isKidsMode()
+        val sig = list.joinToString("|") { it.packageName } + "#" + kids
+        val first = list.firstOrNull()
+        if (first != null && !kids) {
+            btnContinue.text = getString(R.string.btn_continue, first.label)
+            btnContinue.visibility = View.VISIBLE
+        } else {
+            btnContinue.visibility = View.GONE
+        }
+        if (sig == lastRecentsSig) return
+        lastRecentsSig = sig
+        val focusedTag = recentsRow.focusedChild?.tag as? String
+        recentsRow.removeAllViews()
+        val show = list.isNotEmpty() && !kids
+        recentsLabel.visibility = if (show) View.VISIBLE else View.GONE
+        recentsScroll.visibility = if (show) View.VISIBLE else View.GONE
+        if (!show) return
+        for (app in list) {
+            val tile = inflateTile(recentsRow)
+            bindAppTile(tile, app, false)
+            // в «Недавних» удержание убирает из списка
+            tile.setOnLongClickListener {
+                removeRecent(app)
+                true
+            }
+            tile.setOnKeyListener { v, keyCode, event ->
+                handleTileKey(v, keyCode, event) { removeRecent(app) }
+            }
+            recentsRow.addView(tile)
+        }
+        recentsScroll.scrollTo(0, 0)
+        if (focusedTag != null && page == Page.HOME) {
+            for (i in 0 until recentsRow.childCount) {
+                if (recentsRow.getChildAt(i).tag == focusedTag) recentsRow.getChildAt(i).requestFocus()
+            }
+        }
+    }
+
+    private fun removeRecent(app: AppEntry) {
+        val idx = recentsRow.indexOfChild(recentsRow.focusedChild)
+        prefs.removeRecent(app.packageName)
+        Toast.makeText(this, getString(R.string.recent_removed, app.label), Toast.LENGTH_SHORT).show()
+        buildRecentsRow()
+        if (recentsRow.childCount > 0) {
+            recentsRow.getChildAt(maxOf(0, minOf(idx, recentsRow.childCount - 1))).requestFocus()
+        } else {
+            favRow.getChildAt(0)?.requestFocus()
+        }
+    }
+
+    /** Погода в верхней панели: кэш 30 минут, при ошибке просто скрыта. */
+    private fun refreshWeather(force: Boolean) {
+        val city = prefs.cityIndex
+        val cached = if (force) null else Weather.cached(this, city)
+        if (cached != null) {
+            showWeather(city, cached)
+            return
+        }
+        if (weatherLoading) return
+        weatherLoading = true
+        val ctx = applicationContext
+        try {
+            io.execute {
+                val now = Weather.fetch(ctx, city)
+                mainHandler.post {
+                    weatherLoading = false
+                    if (destroyed) return@post
+                    if (now != null) {
+                        showWeather(city, now)
+                    } else if (Weather.cached(ctx, prefs.cityIndex) == null) {
+                        topWeather.visibility = View.GONE
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            weatherLoading = false
+        }
+    }
+
+    private fun showWeather(city: Int, now: Weather.Now) {
+        if (city != prefs.cityIndex) return
+        topWeather.text = Weather.CITIES[city].name + "  " + Weather.format(now)
+        topWeather.visibility = View.VISIBLE
+    }
+
+    /** Ряд «Входы»: HDMI и другие входы телевизора, если система их отдаёт. */
+    private fun refreshInputs() {
+        val ctx = applicationContext
+        try {
+            io.execute {
+                val list = TvInputs.list(ctx)
+                val usable = list.isNotEmpty() && TvInputs.intentFor(list[0]).resolveActivity(ctx.packageManager) != null
+                mainHandler.post { if (!destroyed) buildInputsRow(if (usable) list else emptyList()) }
+            }
+        } catch (e: Exception) {
+            // ignore
+        }
+    }
+
+    private fun buildInputsRow(list: List<TvInputs.Input>) {
+        val kids = isKidsMode()
+        val sig = list.joinToString("|") { it.id + ":" + it.label } + "#" + kids
+        if (sig == lastInputsSig) return
+        lastInputsSig = sig
+        inputsRow.removeAllViews()
+        val show = list.isNotEmpty() && !kids
+        inputsLabel.visibility = if (show) View.VISIBLE else View.GONE
+        inputsScroll.visibility = if (show) View.VISIBLE else View.GONE
+        if (!show) return
+        for (input in list) {
+            val tile = makeActionTile(inputsRow, R.drawable.ic_input, input.label) {
+                try {
+                    startActivity(TvInputs.intentFor(input))
+                } catch (e: Exception) {
+                    Toast.makeText(this, R.string.input_failed, Toast.LENGTH_LONG).show()
+                }
+            }
+            tile.tag = "action:input:" + input.id
+            inputsRow.addView(tile)
+        }
+    }
+
+    // ---------- Пинг, продление, устройства ----------
+
+    private fun measurePing() {
+        if (pingRunning || page != Page.HOME || !resumed) return
+        pingRunning = true
+        if (pingCard.visibility != View.VISIBLE) {
+            pingText.setText(R.string.ping_measuring)
+            pingDot.setBackgroundResource(R.drawable.dot_grey)
+            pingCard.visibility = View.VISIBLE
+        }
+        try {
+            io.execute {
+                val ms = Ping.measure()
+                mainHandler.post {
+                    pingRunning = false
+                    if (destroyed) return@post
+                    if (ms >= 0) {
+                        pingText.text = getString(R.string.ping_ms, ms)
+                        pingDot.setBackgroundResource(if (ms < 150) R.drawable.dot_green else R.drawable.dot_yellow)
+                    } else {
+                        pingText.setText(R.string.ping_fail)
+                        pingDot.setBackgroundResource(R.drawable.dot_red)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            pingRunning = false
+        }
+    }
+
+    /** Мягкое напоминание на главной: осталось ≤3 дней или подписка закончилась. Скрывается на сутки. */
+    private fun updateRenewBanner() {
+        if (!::renewCard.isInitialized) return
+        val me = if (session.paired) session.me else null
+        var show = false
+        if (me != null && !isKidsMode()) {
+            val status = me.optString("status", "")
+            val days = me.optInt("days_left", 0)
+            val dismissed = System.currentTimeMillis() - prefs.renewDismissedAt < 24L * 3600_000L
+            if (!dismissed) {
+                if (status == "ACTIVE" && days <= 3) {
+                    renewTitle.text = if (days <= 0) getString(R.string.renew_today) else getString(R.string.renew_soon, days)
+                    show = true
+                } else if (status == "EXPIRED" || status == "DISABLED" || status == "LIMITED") {
+                    renewTitle.setText(R.string.renew_expired)
+                    show = true
+                }
+            }
+        }
+        if (show && !renewQrDone) {
+            setQr(findViewById(R.id.renew_qr), Api.RENEW_LINK, dp(80))
+            renewQrDone = true
+        }
+        renewCard.visibility = if (show) View.VISIBLE else View.GONE
+    }
+
+    /** Список устройств подписки на экране «Подписка» (поле devices из /tv/me). */
+    private fun bindDeviceList(me: JSONObject?) {
+        val arr = me?.optJSONArray("devices")
+        if (arr == null || arr.length() == 0) {
+            subDeviceList.visibility = View.GONE
+            return
+        }
+        val sb = StringBuilder(getString(R.string.devices_title))
+        for (i in 0 until minOf(arr.length(), 8)) {
+            val d = arr.optJSONObject(i) ?: continue
+            val model = d.optString("model", "").let { if (it == "null") "" else it.trim() }
+            val platform = d.optString("platform", "").let { if (it == "null") "" else it.trim() }
+            val os = d.optString("os_version", "").let { if (it == "null") "" else it.trim() }
+            val sys = listOf(platform, os).filter { it.isNotEmpty() }.joinToString(" ")
+            val name = listOf(model, sys).filter { it.isNotEmpty() }.joinToString(" · ").ifEmpty { "Устройство" }
+            val since = formatDate(d.optString("created_at", "")) ?: "—"
+            val seen = formatDate(d.optString("updated_at", ""))
+            sb.append('\n')
+            sb.append(if (seen != null && seen != since) getString(R.string.device_line_seen, name, since, seen) else getString(R.string.device_line, name, since))
+        }
+        subDeviceList.text = sb.toString()
+        subDeviceList.visibility = View.VISIBLE
+    }
+
+    // ---------- Детский режим ----------
+
+    private fun isKidsMode(): Boolean = ::prefs.isInitialized && prefs.kidsEnabled && prefs.kidsApps().isNotEmpty()
+
+    internal fun addKidsSettingRow(screen: SettingsScreen) {
+        screen.add("kids", getString(R.string.set_kids), getString(if (isKidsMode()) R.string.on else R.string.off)) {
+            startKidsSetup()
+        }
+        if (prefs.kidsApps().isNotEmpty()) {
+            screen.add("kids_apps", getString(R.string.kids_apps), getString(R.string.kids_apps_count, prefs.kidsApps().size)) {
+                startKidsPick()
+            }
+        }
+    }
+
+    /** Включение: PIN (если ещё нет) → выбор приложений → «Назад» включает режим. */
+    private fun startKidsSetup() {
+        if (prefs.hasPin) {
+            startKidsPick()
+            return
+        }
+        pinPad.show(getString(R.string.pin_new), { first ->
+            mainHandler.post {
+                pinPad.show(getString(R.string.pin_repeat), { second ->
+                    if (second == first) {
+                        prefs.setPin(first)
+                        mainHandler.post { startKidsPick() }
+                        true
+                    } else {
+                        mainHandler.post {
+                            startKidsSetup()
+                            pinPad.setError(getString(R.string.pin_mismatch))
+                        }
+                        true
+                    }
+                }, { })
+            }
+            true
+        }, { })
+    }
+
+    private fun startKidsPick() {
+        pickMode = false
+        showPage(Page.APPS, true)
+        kidsPick = true
+        appsHint.setText(R.string.kids_pick_hint)
+        appsHint.setTextColor(Color.WHITE)
+        refreshBadges()
+    }
+
+    private fun finishKidsPick() {
+        kidsPick = false
+        if (prefs.kidsApps().isEmpty()) {
+            Toast.makeText(this, R.string.kids_none, Toast.LENGTH_LONG).show()
+            refreshBadges()
+            showPage(Page.SETTINGS, true)
+            return
+        }
+        prefs.kidsEnabled = true
+        Toast.makeText(this, R.string.kids_on, Toast.LENGTH_SHORT).show()
+        refreshBadges()
+        applyKidsMode()
+    }
+
+    private fun askExitKids() {
+        pinPad.show(getString(R.string.pin_exit_kids), { pin ->
+            if (prefs.checkPin(pin)) {
+                prefs.kidsEnabled = false
+                mainHandler.post {
+                    Toast.makeText(this, R.string.kids_off, Toast.LENGTH_SHORT).show()
+                    applyKidsMode()
+                }
+                true
+            } else {
+                false
+            }
+        }, { })
+    }
+
+    /** Перестроить главную под детский режим (или обратно). */
+    private fun applyKidsMode() {
+        lastFavSig = ""
+        lastRecentsSig = "?"
+        lastInputsSig = "?"
+        showPage(Page.HOME, false)
+        updateHomeUi()
+        buildFavRow(null)
+        buildRecentsRow()
+        refreshInputs()
+        val first = if (isKidsMode()) favRow.getChildAt(0) else btnConnect
+        first?.requestFocus()
+    }
+
+    /** Что прячем от ребёнка: вкладку «Приложения», кнопки подписки/подключения, подсказки, системные переходы. */
+    private fun applyKidsVisibility() {
+        if (!::rowHint.isInitialized) return
+        val kids = isKidsMode()
+        val vis = if (kids) View.GONE else View.VISIBLE
+        tabApps.visibility = vis
+        btnHow.visibility = vis
+        btnConnect.visibility = vis
+        rowHint.visibility = vis
+        if (kids) {
+            btnSub.visibility = View.GONE
+            btnContinue.visibility = View.GONE
+            notHomeChip.visibility = View.GONE
+            renewCard.visibility = View.GONE
+        }
+    }
+
+    internal fun openSettings() {
         try {
             startActivity(Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         } catch (e: Exception) {
@@ -949,13 +1459,27 @@ class MainActivity : Activity() {
 
     private fun updateVpnStatus() {
         if (destroyed) return
-        if (::vpnHook.isInitialized && vpnHook.applyStatus()) return
-        if (isVpnActive()) {
+        // встроенный VPN включён/подключается/ошибка — статус и анимацию ведёт VpnHomeHook
+        if (::vpnHook.isInitialized && vpnHook.applyStatus()) {
+            lastVpnActive = isVpnActive()
+            return
+        }
+        val active = isVpnActive()
+        if (active) {
             statusDot.setBackgroundResource(R.drawable.dot_green)
             statusText.setText(R.string.status_on)
         } else {
             statusDot.setBackgroundResource(R.drawable.dot_grey)
             statusText.setText(R.string.status_off)
+        }
+        val prev = lastVpnActive
+        lastVpnActive = active
+        if (active && (prev == false || connectAnim.state == ConnectState.CONNECTING)) {
+            connectAnim.play(ConnectState.CONNECTED)
+        } else if (!active && connectAnim.state == ConnectState.CONNECTING && resumed) {
+            connectAnim.play(ConnectState.IDLE)
+        } else if (!active && connectAnim.state == ConnectState.CONNECTED) {
+            connectAnim.play(ConnectState.IDLE)
         }
     }
 
@@ -976,6 +1500,8 @@ class MainActivity : Activity() {
             btnSub.visibility = View.GONE
             subLine.visibility = View.GONE
         }
+        updateRenewBanner()
+        applyKidsVisibility()
     }
 
     private fun subLineText(me: JSONObject): String? {
@@ -1025,6 +1551,7 @@ class MainActivity : Activity() {
     // ---------- Экран «Подписка» ----------
 
     private fun bindSub() {
+        bindDeviceList(session.me)
         val me = session.me
         if (me == null) {
             subPlan.setText(R.string.plan_regular)
@@ -1341,16 +1868,226 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun setupFocusAnim(v: View, scale: Float) {
+    internal fun setupFocusAnim(v: View, scale: Float) {
         v.setOnFocusChangeListener { view, hasFocus ->
-            val s = if (hasFocus) scale else 1f
-            view.animate()
-                .scaleX(s)
-                .scaleY(s)
-                .translationZ(if (hasFocus) dp(6).toFloat() else 0f)
-                .setDuration(140)
-                .start()
+            val sc = if (hasFocus) scale else 1f
+            val z = if (hasFocus) dp(8).toFloat() else 0f
+            if (prefs.animations) {
+                view.animate()
+                    .scaleX(sc)
+                    .scaleY(sc)
+                    .translationZ(z)
+                    .setInterpolator(focusInterpolator)
+                    .setDuration(180)
+                    .start()
+            } else {
+                view.animate().cancel()
+                view.scaleX = sc
+                view.scaleY = sc
+                view.translationZ = z
+            }
         }
+    }
+
+    // ---------- Анимации, фон, настройки ----------
+
+    /** Применить настройку «Анимации» (и автоматическое выключение на слабых ТВ). */
+    internal fun applyAnimationsSetting() {
+        blackHole.setAnimationsEnabled(prefs.animations)
+        if (!prefs.animations) {
+            connectAnim.play(ConnectState.IDLE)
+            tintAnimator?.cancel()
+        }
+        updateBlackHoleRunning()
+    }
+
+    private fun updateBlackHoleRunning() {
+        blackHole.setRunning(resumed && page == Page.HOME && !destroyed && idleView == null)
+    }
+
+    private fun pageViewFor(p: Page): View = when (p) {
+        Page.HOME -> pageHome
+        Page.APPS -> pageApps
+        Page.HELP -> pageHelp
+        Page.PAIR -> pagePair
+        Page.SUB -> pageSub
+        Page.SETTINGS -> settings.page
+    }
+
+    /** Смена экрана: мягкое появление со сдвигом снизу, 200 мс. */
+    private fun animatePageIn(v: View) {
+        if (!prefs.animations) {
+            v.alpha = 1f
+            v.translationY = 0f
+            return
+        }
+        v.alpha = 0f
+        v.translationY = dp(14).toFloat()
+        v.animate().alpha(1f).translationY(0f).setDuration(200).setInterpolator(focusInterpolator).start()
+    }
+
+    /** Фокус на плитке приложения на главной → фон плавно окрашивается в её цвет. */
+    private fun onFocusMoved(v: View?) {
+        if (destroyed || page != Page.HOME || v == null) return
+        if (isInside(v, homeHero) || isInside(v, topBar)) homeScroll.smoothScrollTo(0, 0)
+        val pkg = v.tag as? String
+        if (pkg == null || pkg.startsWith("action:")) {
+            tintTo(0)
+            return
+        }
+        val cached = tintCache[pkg]
+        if (cached != null) {
+            tintTo(cached)
+            return
+        }
+        val d = visualCache[pkg]?.drawable
+        if (d == null) {
+            tintTo(0)
+            return
+        }
+        val dom = ColorUtil.dominant(d)
+        val color = if (dom != null) Color.argb(0x55, Color.red(dom), Color.green(dom), Color.blue(dom)) else 0
+        tintCache[pkg] = color
+        tintTo(color)
+    }
+
+    private fun isInside(v: View, parent: View): Boolean {
+        var cur: View? = v
+        while (cur != null) {
+            if (cur === parent) return true
+            cur = cur.parent as? View
+        }
+        return false
+    }
+
+    private fun tintTo(color: Int) {
+        if (color == tintTarget) return
+        tintTarget = color
+        tintAnimator?.cancel()
+        if (!prefs.animations) {
+            tintCurrent = color
+            bgTint.setBackgroundColor(color)
+            return
+        }
+        val va = ValueAnimator.ofObject(ArgbEvaluator(), tintCurrent, color)
+        va.duration = 700
+        va.addUpdateListener { anim ->
+            tintCurrent = anim.animatedValue as Int
+            bgTint.setBackgroundColor(tintCurrent)
+        }
+        va.start()
+        tintAnimator = va
+    }
+
+    internal fun onIdleSettingChanged() {
+        lastInputAt = System.currentTimeMillis()
+    }
+
+    // ---------- Заставка при простое ----------
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        lastInputAt = System.currentTimeMillis()
+        if (idleView != null) {
+            // любая кнопка только убирает заставку
+            if (event.action == KeyEvent.ACTION_DOWN) {
+                swallowKeyUp = event.keyCode
+                hideIdle()
+            }
+            return true
+        }
+        if (swallowKeyUp != -1 && event.keyCode == swallowKeyUp) {
+            // повторы и отпускание кнопки, которой разбудили, тоже съедаем
+            if (event.action == KeyEvent.ACTION_UP) swallowKeyUp = -1
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    /** Экран выбора системной заставки (если есть на устройстве). */
+    internal fun openDreamSettings() {
+        val i = Intent(Settings.ACTION_DREAM_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            if (i.resolveActivity(packageManager) != null) {
+                startActivity(i)
+                return
+            }
+        } catch (e: Exception) {
+            // нет такого экрана
+        }
+        openSettings()
+    }
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        lastInputAt = System.currentTimeMillis()
+        if (idleView != null) {
+            if (ev.actionMasked == MotionEvent.ACTION_DOWN) hideIdle()
+            return true
+        }
+        return super.dispatchTouchEvent(ev)
+    }
+
+    override fun dispatchGenericMotionEvent(ev: MotionEvent): Boolean {
+        lastInputAt = System.currentTimeMillis()
+        if (idleView != null) {
+            hideIdle()
+            return true
+        }
+        return super.dispatchGenericMotionEvent(ev)
+    }
+
+    private fun checkIdle() {
+        val min = prefs.idleMinutes
+        if (min <= 0 || !resumed || idleView != null) return
+        if (page != Page.HOME || tileMenu.visibility == View.VISIBLE || choiceDialog.isShowing) return
+        if (System.currentTimeMillis() - lastInputAt >= min * 60_000L) showIdle()
+    }
+
+    private fun showIdle() {
+        if (idleView != null) return
+        val root = findViewById<ViewGroup>(R.id.root)
+        val v = layoutInflater.inflate(R.layout.screensaver, root, false)
+        v.alpha = 0f
+        root.addView(v)
+        idleView = v
+        val c = ScreensaverController(v, prefs.animations)
+        idleController = c
+        c.start()
+        v.animate().alpha(1f).setDuration(if (prefs.animations) 800L else 0L).start()
+        v.requestFocus()
+        updateBlackHoleRunning()
+    }
+
+    private fun hideIdle() {
+        val v = idleView ?: return
+        idleView = null
+        idleController?.stop()
+        idleController = null
+        (v.parent as? ViewGroup)?.removeView(v)
+        lastInputAt = System.currentTimeMillis()
+        updateBlackHoleRunning()
+        if (page == Page.HOME && !btnConnect.hasFocus() && currentFocus == null) btnConnect.requestFocus()
+    }
+
+    internal fun onCitySettingChanged() {
+        topWeather.visibility = View.GONE
+        refreshWeather(true)
+    }
+
+
+    /** «Отвязать телевизор» из настроек (то же, что на экране «Подписка»). */
+    internal fun unpairFromSettings() {
+        val token = session.token
+        session.clear()
+        if (token != null) {
+            try {
+                io.execute { Api.unpair(token) }
+            } catch (e: Exception) {
+                // ignore
+            }
+        }
+        Toast.makeText(this, R.string.unpaired, Toast.LENGTH_LONG).show()
+        updateHomeUi()
+        showPage(Page.HOME, true)
     }
 
     /**
