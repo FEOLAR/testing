@@ -278,3 +278,37 @@ def test_old_android_installs_happ_and_shows_happ_box(tmp_path, quiet_boxes):
         assert pump(app, lambda: "✓" in app.sub_msg.cget("text"))
     finally:
         app.on_close()
+
+
+def test_apps_catalog_page(tmp_path, quiet_boxes):
+    from test_catalog import VLC_ROOT, fake_http, tv_with_stores
+    tv = tv_with_stores(rustore=True)
+    tv.packages.add("com.vk.tv")
+    eng = make_engine(tmp_path, tv)
+    app = make_app(engine=eng, start_adb=False)
+    try:
+        assert pump(app, lambda: app.catalog is not None)
+        assert app.catalog.origin == "встроенный"          # без сети — встроенная копия
+        app._device_ready(eng.device_info("192.168.3.19:5555", "device"))
+        app.show_step("apps")
+        assert pump(app, lambda: bool(app._cat_status) and not app._busy)
+        assert "RuStore" in app.apps_info.cget("text")
+        app._select_category("video")
+        assert "vkvideo" not in app._cat_vars                 # уже установлено — галочки нет
+        app._select_category("movies")
+        assert "netflix" not in app._cat_vars                 # Google Play нет — недоступно
+        app._cat_vars["kinopoisk"].set(True)
+        app._cat_vars["okko"].set(True)
+        app._select_category("tools")
+        eng.http_get = fake_http({"https://download.videolan.org/pub/videolan/vlc-android/": VLC_ROOT})
+        app._cat_vars["vlc"].set(True)
+        app.on_apps_install_selected()
+        assert pump(app, lambda: "VLC" in app.apps_msg.cget("text") and not app._busy, 10)
+        text = app.apps_msg.cget("text")
+        assert "✓ VLC установлен" in text
+        cmds = tv.shell_cmds()
+        assert any("rustore://apps.rustore.ru/app/tv.okko.androidtv" in c for c in cmds)
+        assert any("rustore://apps.rustore.ru/app/ru.kinopoisk.tv" in c for c in cmds)
+        assert "Открыл «Okko» в RuStore" in text
+    finally:
+        app.on_close()

@@ -114,6 +114,11 @@ class FakeTV:
             if not self.stock_wins or pkg != "space.whitehole.tv":
                 self.home = comp if "/" in comp else f"{pkg}/.HomeActivity"
             return 0, "Success"
+        if cmd.startswith("cmd package resolve-activity") and "android.intent.action.VIEW" in cmd:
+            uri = cmd.split(" -d ", 1)[1].strip().strip("'")
+            scheme = uri.split(":", 1)[0]
+            handler = getattr(self, "uri_handlers", {}).get(scheme)
+            return 0, (f"priority=0\n{handler}" if handler else "No activity found")
         if cmd.startswith("cmd package resolve-activity"):
             parts = cmd.split()
             last = parts[-1]
@@ -149,8 +154,13 @@ def make_engine(tmp_path, tv):
         progress(1.0, "1 МБ")
         return dest
 
+    def offline(url):
+        raise OSError(f"тесты без сети: {url}")
+
     adb = Adb("adb", runner=tv)
-    return Engine(adb, data_dir=tmp_path, downloader=fake_download, sleep=lambda s: None)
+    eng = Engine(adb, data_dir=tmp_path, downloader=fake_download, sleep=lambda s: None)
+    eng.http_get = offline
+    return eng
 
 
 def dev(tv_engine):

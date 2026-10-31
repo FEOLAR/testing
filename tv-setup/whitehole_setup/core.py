@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Iterable, Optional
 
+from . import catalog as appcat
 from . import netscan, profiles
 
 # ---------------------------------------------------------------- константы
@@ -557,6 +558,7 @@ class Engine:
         self.downloader = downloader
         self.sleep = sleep
         self.clock = clock
+        self.http_get: Callable[[str], bytes] = appcat.http_get  # каталог и листинги загрузок
 
     # --- подключение и определение платформы
 
@@ -1060,6 +1062,78 @@ class Engine:
         dev.current_home = self.current_home(dev.serial)
         progress(1.0, "Готово")
         return done
+
+    # --- каталог приложений
+
+    def _resolves(self, serial: str, uri: str) -> bool:
+        _, out = self.adb.shell(serial, "cmd package resolve-activity --brief -a android.intent.action.VIEW "
+                                        f"-d {shlex.quote(uri)}", timeout=15)
+        return bool(parse_home_component(out))
+
+    def detect_stores(self, dev: DeviceInfo, pkgs: Optional["set[str]"] = None) -> "set[str]":
+        pkgs = pkgs if pkgs is not None else self.adb.packages(dev.serial)
+        disabled = self.adb.packages(dev.serial, disabled_only=True)
+        stores: set = set()
+        if appcat.PLAY_PKG in pkgs and appcat.PLAY_PKG not in disabled:
+            stores.add("play")
+        if self._resolves(dev.serial, appcat.store_uri("rustore", "ru.vk.tv")):
+            stores.add("rustore")
+        if self._resolves(dev.serial, appcat.store_uri("market", "com.example")):
+            stores.add("market")
+        self.log("Магазины на ТВ: " + (", ".join(sorted(stores)) or "нет"))
+        return stores
+
+    def catalog_status(self, dev: DeviceInfo, cat: "appcat.Catalog") -> "tuple[dict, set]":
+        """{app_id: (установлено?, Plan)} и набор магазинов на ТВ."""
+        pkgs = self.adb.packages(dev.serial)
+        stores = self.detect_stores(dev, pkgs)
+        res: dict = {}
+        for app in cat.apps:
+            installed = any(p in pkgs for p in app.packages)
+            if not installed and app.detect_uri and not app.package:
+                installed = self._resolves(dev.serial, app.detect_uri)
+            res[app.id] = (installed, appcat.choose_plan(app, stores))
+        return res, stores
+
+    def install_catalog_app(self, dev: DeviceInfo, app: "appcat.App", stores: "set[str]",
+                            progress: ProgressCb = _noop_progress) -> str:
+        """Ставит приложение первым доступным способом; если APK не скачался — пробует следующий
+        способ (обычно магазин). Возвращает текст для пользователя."""
+        if not dev.abi:
+            dev.abi = self.adb.getprop(dev.serial, "ro.product.cpu.abi")
+        errors: list = []
+        methods = list(app.methods)
+        while methods:
+            plan = appcat.choose_plan(appcat.App(app.id, app.name, app.category, app.package, app.description,
+                                                 methods), stores)
+            if plan.kind == "none":
+                errors.append(plan.reason)
+                break
+            idx = methods.index(plan.method)
+            try:
+                if plan.kind == "store":
+                    pkg = app.package or app.packages[0]
+                    code, out = self.adb.shell(dev.serial, appcat.store_command(plan.store, pkg), timeout=15)
+                    if code != 0 or "Error" in out or "Exception" in out:
+                        raise SetupError(f"{appcat.STORE_NAMES[plan.store]} не открылся", "store", out)
+                    return (f"Открыл «{app.name}» в {appcat.STORE_NAMES[plan.store]} — нажми «Установить» "
+                            "на телевизоре")
+                url, abi = appcat.resolve_apk_url(plan.method, dev.abi, self.http_get)
+                self.log(f"{app.name}: {url}")
+                dest = self.data_dir / "apps" / f"{app.id}-{abi or 'universal'}.apk"
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                self.downloader(url, dest, lambda f, t: progress(f, f"Скачиваю {app.name}: {t}"))
+                progress(None, f"Устанавливаю {app.name}…")
+                self.adb.install(dev.serial, str(dest))
+                return f"✓ {app.name} установлен"
+            except SetupError as e:
+                self.log(f"{app.name}: {e.message} {e.details}")
+                errors.append(e.message)
+            except Exception as e:  # сеть, разбор листинга и т.п.
+                self.log(f"{app.name}: {e!r}")
+                errors.append(f"не скачался ({e.__class__.__name__})")
+            methods = methods[idx + 1:]
+        raise SetupError(f"Не получилось поставить «{app.name}»: " + "; ".join(errors), "catalog")
 
     def resolve_home_activity(self, serial: str, pkg: str) -> Optional[str]:
         _, out = self.adb.shell(serial, "cmd package resolve-activity --brief -a android.intent.action.MAIN "

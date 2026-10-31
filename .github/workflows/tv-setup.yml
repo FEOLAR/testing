@@ -40,6 +40,12 @@ jobs:
           python -m pytest -q -p no:cacheprovider tests *>&1 | Tee-Object -FilePath ci-pytest.log
           if ($LASTEXITCODE -ne 0) { throw "pytest failed" }
 
+      - name: Verify catalog.json (official direct links exist)
+        run: |
+          $env:PYTHONIOENCODING = "utf-8"
+          python tools/verify_catalog.py catalog.json *>&1 | Tee-Object -FilePath ci-catalog.log
+          if ($LASTEXITCODE -ne 0) { throw "catalog verification failed" }
+
       - name: Download Android platform-tools (adb)
         run: |
           Invoke-WebRequest -Uri "https://dl.google.com/android/repository/platform-tools-latest-windows.zip" -OutFile platform-tools.zip
@@ -57,6 +63,7 @@ jobs:
             --add-binary "pt/platform-tools/AdbWinUsbApi.dll;adb" `
             --add-data "assets/icon.ico;assets" `
             --add-data "assets/logo.png;assets" `
+            --add-data "catalog.json;." `
             --collect-data customtkinter `
             --hidden-import psutil `
             main.py *>&1 | Tee-Object -FilePath ci-build.log
@@ -74,7 +81,7 @@ jobs:
         if: failure()
         shell: bash
         run: |
-          for f in ci-pytest.log ci-build.log ci-selftest.log; do
+          for f in ci-pytest.log ci-catalog.log ci-build.log ci-selftest.log; do
             [ -f "$f" ] || continue
             body=$(grep -nE "Error|error|FAILED|failed|Traceback|assert|RESULT|adb:" "$f" | head -n 50)
             [ -n "$body" ] || body=$(tail -n 50 "$f")
@@ -106,6 +113,8 @@ jobs:
             «Система Windows защитила ваш компьютер» — нажмите «Подробнее» → «Выполнить в любом случае».
 
             Коммит: ${{ github.sha }}, сборка №${{ github.run_number }}.
-          files: tv-setup/dist/WhiteHoleSetup.exe
+          files: |
+            tv-setup/dist/WhiteHoleSetup.exe
+            tv-setup/catalog.json
           make_latest: false
           overwrite_files: true

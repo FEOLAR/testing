@@ -15,11 +15,20 @@ def selftest(out_path: str) -> int:
     lines.append(f"adb: {adb_path}")
     lines.append(f"icon: {core.resource_path('assets', 'icon.ico').exists()}")
     lines.append(f"logo: {core.resource_path('assets', 'logo.png').exists()}")
+    try:
+        from whitehole_setup import catalog as appcat
+        cat = appcat.load_catalog(core.resource_path("catalog.json"))
+        lines.append(f"catalog: ok, {len(cat.apps)} apps")
+    except Exception as e:  # pragma: no cover
+        lines.append(f"catalog: {e!r}")
+        return_code_catalog = 1
+    else:
+        return_code_catalog = 0
     code = 1
     if adb_path:
         rc, out = core.default_runner([adb_path, "version"], 30)
         lines.append(out)
-        code = 0 if rc == 0 and "Android Debug Bridge" in out else 1
+        code = 0 if rc == 0 and "Android Debug Bridge" in out and not return_code_catalog else 1
     try:
         import customtkinter  # noqa: F401
         from whitehole_setup import gui  # noqa: F401

@@ -62,6 +62,22 @@ https://github.com/FEOLAR/testing/releases/download/tv-setup-latest/WhiteHoleSet
 5. **Вернуть как было** — включает обратно всё из резервной копии (без копии — отключённые пакеты
    из известных списков), возвращает тот домашний экран, что был до WhiteHole, по галочке удаляет WhiteHole.
 
+6. **Приложения** (каталог) — категории «Кино и сериалы», «YouTube и видео», «Музыка», «Плееры и полезное»,
+   «Магазины». **Только официальные источники**: APK скачивается лишь с сервера разработчика
+   (Kodi — mirrors.kodi.tv, VLC — download.videolan.org, Telegram — telegram.org, RuStore — static.rustore.ru),
+   всё остальное открывается в магазине на ТВ (RuStore `rustore://apps.rustore.ru/app/<пакет>`,
+   Google Play `market://details?id=<пакет>`) — «Установить» нажимают пультом. Никаких APKMirror/APKPure,
+   SmartTube не добавляем. Установленное определяется по `pm list packages`, можно отметить несколько
+   приложений и нажать «Установить выбранные».
+
+   **Как поменять список без пересборки:** отредактируй `tv-setup/catalog.json` и запушь в ветку — CI
+   проверит, что все прямые ссылки живые (`tools/verify_catalog.py`), и выложит `catalog.json` в релиз
+   `tv-setup-latest`. Программа при запуске берёт каталог оттуда, а без интернета — встроенную копию.
+   Формат записи: `id`, `name`, `category`, `package` (+`alt_packages`), `description`, `verified`, `source`,
+   `methods` — список способов по порядку: `direct_apk` (url + `allowed_hosts`), `index_apk` (свежая версия
+   из официального листинга загрузок), `github_release` (репозиторий разработчика), `store`
+   (`stores`: `rustore` / `play` / `market`).
+
 На Android 6 и ниже домашний экран командой не меняется — программа попросит нажать «Домой»
 и выбрать WhiteHole → «Всегда». Samsung (Tizen), LG (webOS), VIDAA, Apple TV не поддерживаются —
 вариант: Android-приставка в HDMI или VPN на роутере.

@@ -1,0 +1,167 @@
+{
+  "version": 1,
+  "updated": "2026-10-31",
+  "note": "Только официальные источники: сайт/сервер разработчика или магазин приложений на ТВ. Никаких зеркал APK (APKMirror, APKPure и т.п.).",
+  "categories": [
+    {"id": "movies", "name": "Кино и сериалы"},
+    {"id": "video", "name": "YouTube и видео"},
+    {"id": "music", "name": "Музыка"},
+    {"id": "tools", "name": "Плееры и полезное"},
+    {"id": "stores", "name": "Магазины"}
+  ],
+  "apps": [
+    {
+      "id": "kinopoisk", "name": "Кинопоиск", "category": "movies",
+      "package": "ru.kinopoisk.tv", "alt_packages": ["ru.kinopoisk"],
+      "description": "Фильмы и сериалы Яндекса (версия для ТВ)",
+      "verified": true, "source": "https://www.rustore.ru/prostore/ustanovka-rustorе-na-tv",
+      "methods": [{"type": "store", "stores": ["rustore", "play", "market"]}]
+    },
+    {
+      "id": "ivi", "name": "Иви", "category": "movies",
+      "package": "ru.ivi.client",
+      "description": "Онлайн-кинотеатр: фильмы, сериалы, мультики",
+      "verified": true, "source": "https://www.rustore.ru/prostore/ustanovka-rustorе-na-tv",
+      "methods": [{"type": "store", "stores": ["rustore", "play", "market"]}]
+    },
+    {
+      "id": "okko", "name": "Okko", "category": "movies",
+      "package": "tv.okko.androidtv", "alt_packages": ["ru.more.play"],
+      "description": "Кино, сериалы и спорт (версия для ТВ)",
+      "verified": true, "source": "https://www.rustore.ru/prostore/ustanovka-rustorе-na-tv",
+      "methods": [{"type": "store", "stores": ["rustore", "play", "market"]}]
+    },
+    {
+      "id": "wink", "name": "Wink", "category": "movies",
+      "package": "ru.rt.video.app.tv",
+      "description": "ТВ-каналы и кино от Ростелекома (для ТВ и приставок)",
+      "verified": true, "source": "https://www.rustore.ru/prostore/ustanovka-rustorе-na-tv",
+      "methods": [{"type": "store", "stores": ["rustore", "play", "market"]}]
+    },
+    {
+      "id": "start", "name": "START", "category": "movies",
+      "package": "ru.start.androidtv", "alt_packages": ["ru.start.androidmobile"],
+      "description": "Российские сериалы и фильмы",
+      "verified": true, "source": "https://www.rustore.ru/prostore/ustanovka-rustorе-na-tv",
+      "methods": [{"type": "store", "stores": ["rustore", "play", "market"]}]
+    },
+    {
+      "id": "premier", "name": "PREMIER", "category": "movies",
+      "package": "one.premier.rustoretv", "alt_packages": ["gpm.tnt_premier"],
+      "description": "Сериалы и шоу ТНТ и других каналов",
+      "verified": true, "source": "https://www.rustore.ru/prostore/ustanovka-rustorе-na-tv",
+      "methods": [{"type": "store", "stores": ["rustore", "market"]}]
+    },
+    {
+      "id": "netflix", "name": "Netflix", "category": "movies",
+      "package": "com.netflix.ninja",
+      "description": "Netflix для Android TV (только через Google Play)",
+      "verified": false, "source": "https://play.google.com/store/apps/details?id=com.netflix.ninja",
+      "methods": [{"type": "store", "stores": ["play"]}]
+    },
+    {
+      "id": "youtube", "name": "YouTube для ТВ", "category": "video",
+      "package": "com.google.android.youtube.tv",
+      "description": "Официальный YouTube для Android TV",
+      "verified": false, "source": "https://play.google.com/store/apps/details?id=com.google.android.youtube.tv",
+      "methods": [{"type": "store", "stores": ["play", "market"]}]
+    },
+    {
+      "id": "vkvideo", "name": "VK Видео", "category": "video",
+      "package": "com.vk.tv",
+      "description": "VK Видео для Android TV",
+      "verified": true, "source": "https://www.rustore.ru/catalog/app/com.vk.tv",
+      "methods": [{"type": "store", "stores": ["rustore", "play", "market"]}]
+    },
+    {
+      "id": "rutube", "name": "RUTUBE", "category": "video",
+      "package": "ru.rutube.app.tv", "alt_packages": ["ru.rutube.app"],
+      "description": "Видео, шоу и трансляции (версия для ТВ)",
+      "verified": true, "source": "https://www.rustore.ru/prostore/ustanovka-rustorе-na-tv",
+      "methods": [{"type": "store", "stores": ["rustore", "play", "market"]}]
+    },
+    {
+      "id": "yamusic", "name": "Яндекс Музыка", "category": "music",
+      "package": "ru.yandex.music",
+      "description": "Музыка и подкасты (приложение для телефона — на ТВ может быть неудобно)",
+      "verified": false, "source": "https://www.rustore.ru/prostore/10-prilozhenij-dlya-nezabyvaemogo-proslushivaniya-muzyki",
+      "methods": [{"type": "store", "stores": ["rustore", "play", "market"]}]
+    },
+    {
+      "id": "vkmusic", "name": "VK Музыка", "category": "music",
+      "package": "com.uma.musicvk",
+      "description": "Музыка, аудиокниги и подкасты VK",
+      "verified": true, "source": "https://www.rustore.ru/catalog/app/com.uma.musicvk",
+      "methods": [{"type": "store", "stores": ["rustore", "play", "market"]}]
+    },
+    {
+      "id": "spotify", "name": "Spotify", "category": "music",
+      "package": "com.spotify.tv.android",
+      "description": "Spotify для Android TV (только Google Play)",
+      "verified": false, "source": "https://play.google.com/store/apps/details?id=com.spotify.tv.android",
+      "methods": [{"type": "store", "stores": ["play"]}]
+    },
+    {
+      "id": "kodi", "name": "Kodi", "category": "tools",
+      "package": "org.xbmc.kodi",
+      "description": "Медиацентр: фильмы с флешки и из домашней сети",
+      "verified": true, "source": "https://kodi.tv/download/android/",
+      "methods": [
+        {"type": "index_apk", "index_url": "https://mirrors.kodi.tv/releases/android/{abi}/",
+         "file_pattern": "kodi-(\\d+(?:\\.\\d+)+)-[A-Za-z]+-{abi}\\.apk",
+         "abis": ["arm64-v8a", "armeabi-v7a"], "allowed_hosts": ["mirrors.kodi.tv"],
+         "source": "https://kodi.tv/download/android/"},
+        {"type": "store", "stores": ["play", "market"]}
+      ]
+    },
+    {
+      "id": "vlc", "name": "VLC", "category": "tools",
+      "package": "org.videolan.vlc",
+      "description": "Плеер, который открывает почти любое видео",
+      "verified": true, "source": "https://www.videolan.org/vlc/download-android.html",
+      "methods": [
+        {"type": "index_apk", "index_url": "https://download.videolan.org/pub/videolan/vlc-android/",
+         "dir_pattern": "(\\d+\\.\\d+\\.\\d+)/",
+         "file_template": "VLC-Android-{version}-{abi}.apk",
+         "abis": ["arm64-v8a", "armeabi-v7a"], "allowed_hosts": ["download.videolan.org"],
+         "source": "https://www.videolan.org/vlc/download-android.html"},
+        {"type": "store", "stores": ["play", "rustore", "market"]}
+      ]
+    },
+    {
+      "id": "telegram", "name": "Telegram", "category": "tools",
+      "package": "org.telegram.messenger.web", "alt_packages": ["org.telegram.messenger"],
+      "description": "Официальный APK с telegram.org. Версии для ТВ нет — удобнее с аэромышью",
+      "verified": false, "source": "https://telegram.org/android",
+      "methods": [
+        {"type": "direct_apk", "url": "https://telegram.org/dl/android/apk", "allowed_hosts": ["telegram.org"],
+         "source": "https://telegram.org/android"}
+      ]
+    },
+    {
+      "id": "yabrowser", "name": "Яндекс Браузер для ТВ", "category": "tools",
+      "package": "com.yandex.browser.tv",
+      "description": "Браузер, удобный для пульта",
+      "verified": true, "source": "https://www.rustore.ru/prostore/ustanovka-rustorе-na-tv",
+      "methods": [{"type": "store", "stores": ["rustore", "play", "market"]}]
+    },
+    {
+      "id": "xplore", "name": "X-plore", "category": "tools",
+      "package": "com.lonelycatgames.Xplore",
+      "description": "Файловый менеджер с поддержкой пульта",
+      "verified": false, "source": "https://play.google.com/store/apps/details?id=com.lonelycatgames.Xplore",
+      "methods": [{"type": "store", "stores": ["play", "rustore", "market"]}]
+    },
+    {
+      "id": "rustore", "name": "RuStore для ТВ", "category": "stores",
+      "package": "", "detect_uri": "rustore://apps.rustore.ru/app/ru.vk.tv",
+      "description": "Российский магазин приложений — через него ставятся Кинопоиск, Okko, Wink и др.",
+      "verified": true, "source": "https://www.rustore.ru/help/users/start/install-on-tv/install-apk-on-tv",
+      "methods": [
+        {"type": "direct_apk", "url": "https://static.rustore.ru/release/RuStoreTV.apk",
+         "allowed_hosts": ["static.rustore.ru"],
+         "source": "https://www.rustore.ru/help/users/start/install-on-tv/install-apk-on-tv"}
+      ]
+    }
+  ]
+}

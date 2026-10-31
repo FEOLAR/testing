@@ -14,6 +14,7 @@ from typing import Callable, Optional
 import customtkinter as ctk
 
 from . import VERSION, core, texts
+from . import catalog as appcat
 from .core import DeviceInfo, Engine, SetupError
 
 from .theme import (ACCENT, ACCENT_HOVER, ACCENT_PRESSED, ACCENT_TEXT, BG, BORDER, DANGER, DANGER_HOVER,
@@ -27,6 +28,7 @@ STEPS = [
     ("login", "Вход", "через Telegram"),
     ("ads", "Убрать рекламу", "для продвинутых"),
     ("restore", "Вернуть как было", ""),
+    ("apps", "Приложения", "каталог"),
 ]
 
 
@@ -78,13 +80,13 @@ class StepRow(ctk.CTkFrame):
         self._current = False
         self.grid_columnconfigure(1, weight=1)
         self.mark = ctk.CTkLabel(self, text=str(number), width=26, font=font, text_color=MUTED)
-        self.mark.grid(row=0, column=0, rowspan=2, padx=(12, 6), pady=8, sticky="w")
+        self.mark.grid(row=0, column=0, rowspan=2, padx=(12, 6), pady=4, sticky="w")
         self.name = ctk.CTkLabel(self, text=name, font=font, text_color=MUTED, anchor="w")
-        self.name.grid(row=0, column=1, sticky="w", pady=(8 if tag else 12, 0 if tag else 12))
+        self.name.grid(row=0, column=1, sticky="w", pady=(4 if tag else 8, 0 if tag else 8))
         self.tag = None
         if tag:
             self.tag = ctk.CTkLabel(self, text=tag, font=small_font, text_color=MUTED, anchor="w", height=16)
-            self.tag.grid(row=1, column=1, sticky="w", pady=(0, 8))
+            self.tag.grid(row=1, column=1, sticky="w", pady=(0, 5))
         for w in (self, self.mark, self.name) + ((self.tag,) if self.tag else ()):
             w.bind("<Button-1>", self._click, add="+")
             w.bind("<Enter>", lambda e: self._hover(True), add="+")
@@ -165,8 +167,16 @@ class App(ctk.CTk):
             engine.adb.log = self.log
         self.engine = engine
 
+        self.catalog: Optional[appcat.Catalog] = None
+        self._cat_status: dict = {}
+        self._stores: set = set()
+        self._cat_current = ""
+        self._cat_vars: dict = {}
+        self._cat_selected: set = set()   # выбор сохраняется при переходе между категориями
+        self._cat_widgets: list = []
         self._build()
         self.show_step("find")
+        self._load_catalog_async()
         self.protocol("WM_DELETE_WINDOW", self.on_close)
         self.after(50, self._pump)
         if start_adb:
@@ -211,7 +221,7 @@ class App(ctk.CTk):
         self.step_buttons: dict = {}
         for i, (key, name, tag) in enumerate(STEPS):
             b = StepRow(side, i + 1, name, tag, self.f_step, self.f_small, lambda k=key: self.show_step(k))
-            b.grid(row=i, column=0, sticky="ew", padx=10, pady=(12 if i == 0 else 3, 3))
+            b.grid(row=i, column=0, sticky="ew", padx=10, pady=(10 if i == 0 else 2, 2))
             self.step_buttons[key] = b
         side.grid_rowconfigure(len(STEPS), weight=1)
         self.device_label = ctk.CTkLabel(side, text="Телевизор:\nне выбран", font=self.f_small,
@@ -234,6 +244,7 @@ class App(ctk.CTk):
             "login": self._page_login(),
             "ads": self._page_ads(),
             "restore": self._page_restore(),
+            "apps": self._page_apps(),
         }
 
         # Строка статуса + прогресс
@@ -484,6 +495,185 @@ class App(ctk.CTk):
             self._ads_vars[c.pkg.name] = var
             self._ads_choices[c.pkg.name] = c
 
+    # ------------------------------------------------------------ каталог приложений
+
+    def _page_apps(self) -> ctk.CTkFrame:
+        f = ctk.CTkScrollableFrame(self.content, fg_color="transparent")
+        f.grid_columnconfigure(0, weight=1)
+        self._h1(f, "Приложения", 0, "каталог")
+        self.apps_info = self._p(f, texts.APPS_INTRO, 1, font=self.f_small, pady=(0, 8))
+        self.cat_tiles = ctk.CTkFrame(f, fg_color="transparent")
+        self.cat_tiles.grid(row=2, column=0, sticky="ew", padx=28, pady=(0, 8))
+        self.cat_list = ctk.CTkFrame(f, fg_color=CARD, corner_radius=12)
+        self.cat_list.grid(row=3, column=0, sticky="ew", padx=28, pady=(0, 8))
+        self.cat_list.grid_columnconfigure(1, weight=1)
+        row = ctk.CTkFrame(f, fg_color="transparent")
+        row.grid(row=4, column=0, sticky="w", padx=28, pady=(4, 0))
+        self.btn_install_sel = accent_button(row, text="Установить выбранные", command=self.on_apps_install_selected,
+                                             height=46, corner_radius=23, font=self.f_btn)
+        self.btn_install_sel.pack(side="left", ipadx=16)
+        self._action_buttons.append(self.btn_install_sel)
+        self._small_button(row, "Обновить", self.on_apps_refresh, width=120).pack(side="left", padx=12)
+        self.apps_msg = self._p(f, "", 5, color=TEXT, pady=(10, 12))
+        return f
+
+    def _load_catalog_async(self) -> None:
+        bundled = core.resource_path("catalog.json")
+
+        def work():
+            try:
+                cat = appcat.load_catalog(bundled, fetch=self.engine.http_get, log=self.log)
+            except Exception as e:
+                self.log(f"Каталог не загрузился: {e!r}")
+                cat = None
+            self._ui(self._catalog_loaded, cat)
+        threading.Thread(target=work, daemon=True, name="catalog").start()
+
+    def _catalog_loaded(self, cat) -> None:
+        self.catalog = cat
+        if cat and not self._cat_current and cat.categories:
+            self._cat_current = cat.categories[0][0]
+        if getattr(self, "current", "") == "apps":
+            self._render_apps()
+
+    def _render_apps(self) -> None:
+        for w in self.cat_tiles.winfo_children():
+            w.destroy()
+        for w in self._cat_widgets:
+            if w in self._action_buttons:
+                self._action_buttons.remove(w)
+        self._cat_widgets = []
+        for w in self.cat_list.winfo_children():
+            w.destroy()
+        self._cat_vars = {}
+        cat = self.catalog
+        if cat is None:
+            ctk.CTkLabel(self.cat_list, text="Загружаю каталог…", font=self.f_small, text_color=MUTED).grid(
+                row=0, column=0, padx=12, pady=12)
+            return
+        for i, (cid, cname) in enumerate(cat.categories):
+            self.cat_tiles.grid_columnconfigure(i, weight=1, uniform="tiles")
+            sel = cid == self._cat_current
+            t = ctk.CTkButton(self.cat_tiles, text=f"{cname}\n{len(cat.in_category(cid))} прил.", height=58,
+                              corner_radius=12, font=self.f_small, fg_color=RAISED if not sel else BORDER,
+                              hover_color=BORDER, text_color=ACCENT if sel else TEXT, border_width=1,
+                              border_color=ACCENT if sel else BORDER,
+                              command=lambda c=cid: self._select_category(c))
+            t.grid(row=0, column=i, sticky="ew", padx=(0 if i == 0 else 6, 0))
+            try:
+                t._text_label.configure(wraplength=84)
+            except Exception:
+                pass
+        apps = cat.in_category(self._cat_current)
+        for r, app in enumerate(apps):
+            installed, plan = self._cat_status.get(app.id, (None, None))
+            can_select = self.device is not None and installed is False and plan is not None and plan.kind != "none"
+            var = ctk.BooleanVar(value=can_select and app.id in self._cat_selected)
+
+            def on_toggle(*_a, aid=app.id, v=var):
+                (self._cat_selected.add if v.get() else self._cat_selected.discard)(aid)
+            var.trace_add("write", on_toggle)
+            cb = ctk.CTkCheckBox(self.cat_list, text="", width=24, variable=var, fg_color=ACCENT,
+                                 hover_color=ACCENT_HOVER, border_color=MUTED, checkmark_color=ACCENT_TEXT)
+            cb.grid(row=r * 2, column=0, rowspan=2, padx=(12, 4), pady=6)
+            if can_select:
+                self._cat_vars[app.id] = var
+                self._cat_widgets.append(cb)
+                self._action_buttons.append(cb)
+            else:
+                cb.configure(state="disabled")
+            name = app.name + ("" if app.verified else "  ·  не проверено")
+            ctk.CTkLabel(self.cat_list, text=name, font=self.f_body, text_color=TEXT, anchor="w").grid(
+                row=r * 2, column=1, sticky="w", pady=(8, 0))
+            desc = app.description
+            if plan is not None and plan.kind == "none" and installed is False:
+                desc += "\n" + plan.reason
+            ctk.CTkLabel(self.cat_list, text=desc, font=self.f_small, text_color=MUTED, anchor="w", justify="left",
+                         wraplength=250).grid(row=r * 2 + 1, column=1, sticky="w", pady=(0, 8))
+            if installed:
+                ctk.CTkLabel(self.cat_list, text="✓ установлено", font=self.f_small, text_color=SUCCESS).grid(
+                    row=r * 2, column=2, rowspan=2, padx=12)
+            elif installed is None:
+                ctk.CTkLabel(self.cat_list, text="—", font=self.f_small, text_color=MUTED).grid(
+                    row=r * 2, column=2, rowspan=2, padx=12)
+            elif plan.kind != "none":
+                b = self._small_button(self.cat_list, plan.label, lambda a=app: self.on_app_install(a), width=170)
+                b.grid(row=r * 2, column=2, rowspan=2, padx=12)
+                self._cat_widgets.append(b)
+            else:
+                ctk.CTkLabel(self.cat_list, text="недоступно", font=self.f_small, text_color=WARN).grid(
+                    row=r * 2, column=2, rowspan=2, padx=12)
+        origin = f"Каталог: {cat.origin}. " if cat.origin else ""
+        if self.device is None:
+            self.apps_info.configure(text=texts.APPS_INTRO + "\n" + origin + "Сначала найди телевизор (шаг 1).")
+        else:
+            st = ", ".join(appcat.STORE_NAMES[s] if s != "market" else "другой магазин" for s in
+                           sorted(self._stores)) or "нет"
+            self.apps_info.configure(text=texts.APPS_INTRO + "\n" + origin + f"Магазины на телевизоре: {st}.")
+        self._apply_busy()
+
+    def _select_category(self, cid: str) -> None:
+        self._cat_current = cid
+        self._render_apps()
+
+    def on_apps_refresh(self) -> None:
+        if not self._need_device() or self.catalog is None:
+            return
+        d, cat = self.device, self.catalog
+
+        def ok(res):
+            self._cat_status, self._stores = res
+            self._render_apps()
+
+        def err(e: SetupError):
+            self.apps_msg.configure(text=e.message, text_color=DANGER)
+
+        self.run_task(lambda: self.engine.catalog_status(d, cat), ok, err, busy_text="Проверяю приложения на ТВ…")
+
+    def _install_apps(self, apps: list) -> None:
+        d, stores = self.device, set(self._stores)
+
+        def work():
+            results = []
+            for app in apps:
+                try:
+                    results.append((True, self.engine.install_catalog_app(d, app, stores, self.progress_cb)))
+                except SetupError as e:
+                    results.append((False, e.message))
+            return results
+
+        def ok(results):
+            lines = [("" if good else "⚠ ") + msg for good, msg in results]
+            all_ok = all(g for g, _ in results)
+            self.apps_msg.configure(text="\n".join(lines), text_color=SUCCESS if all_ok else WARN)
+            self._cat_selected.clear()
+            self.after(200, self.on_apps_refresh)
+
+        def err(e: SetupError):
+            self.apps_msg.configure(text=e.message, text_color=DANGER)
+
+        self.apps_msg.configure(text="", text_color=TEXT)
+        self.run_task(work, ok, err, busy_text="Ставлю приложения…")
+
+    def on_app_install(self, app) -> None:
+        if self._need_device():
+            self._install_apps([app])
+
+    def on_apps_install_selected(self) -> None:
+        if not self._need_device() or self.catalog is None:
+            return
+        chosen = []
+        for i in sorted(self._cat_selected, key=lambda x: [a.id for a in self.catalog.apps].index(x)
+                        if self.catalog.by_id(x) else 0):
+            app = self.catalog.by_id(i)
+            installed, plan = self._cat_status.get(i, (None, None))
+            if app and installed is False and plan is not None and plan.kind != "none":
+                chosen.append(app)
+        if not chosen:
+            self.apps_msg.configure(text="Отметь галочками, что поставить.", text_color=WARN)
+            return
+        self._install_apps(chosen)
+
     def _page_restore(self) -> ctk.CTkFrame:
         f = self._page()
         self._h1(f, "Вернуть как было", 0)
@@ -512,6 +702,10 @@ class App(ctk.CTk):
             self._refresh_install_page()
         if key == "login":
             self._refresh_login_page()
+        if key == "apps":
+            self._render_apps()
+            if self.device and not self._busy and not self._cat_status:
+                self.on_apps_refresh()
         if key == "ads" and self.device and not self._busy:
             self.on_ads_check()
 
@@ -875,6 +1069,7 @@ class App(ctk.CTk):
         self._ads_empty("Нажми «Проверить телевизор»")
         self.btn_next1.pack(side="left", padx=12, ipadx=12)
         self.mark_done("find")
+        self._cat_status = {}
 
     def _need_device(self) -> bool:
         if self.device is None:
