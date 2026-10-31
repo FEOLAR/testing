@@ -38,23 +38,28 @@ def main() -> int:
     cat = appcat.parse_catalog(path.read_text(encoding="utf-8"), str(path))
     bad = 0
     for app in cat.apps:
-        for m in app.methods:
-            if m.type == "store":
-                continue
-            abis = ["arm64-v8a", "armeabi-v7a"] if m.type != "direct_apk" else [""]
-            for abi in abis:
+        apk_methods = [m for m in app.methods if m.type != "store"]
+        abis = ["arm64-v8a", "armeabi-v7a"] if any(m.type != "direct_apk" for m in apk_methods) else [""]
+        for abi in abis if apk_methods else []:
+            # Для каждого ABI должен сработать хотя бы один способ; запасные, что не сработали, — ::warning.
+            good = False
+            problems = []
+            for m in apk_methods:
                 try:
                     url, got = appcat.resolve_apk_url(m, abi, appcat.http_get)
                     code, size, final = head(url)
                     host = urllib.parse.urlparse(final).hostname
-                    ok = code in (200, 206) and size > 500_000
-                    tag = "notice" if ok else "error"
-                    print(f"::{tag} title=catalog {app.id} {abi or 'universal'}::{url} -> {code}, "
-                          f"{size / 1048576:.1f} MB, итог: {host}")
-                    bad += 0 if ok else 1
+                    if code in (200, 206) and size > 500_000:
+                        print(f"::notice title=catalog {app.id} {abi or 'universal'}::{url} -> {code}, "
+                              f"{size / 1048576:.1f} MB, итог: {host}")
+                        good = True
+                        break
+                    problems.append(f"{url} -> {code}, {size} B")
                 except Exception as e:
-                    print(f"::error title=catalog {app.id} {abi or 'universal'}::{e!r}")
-                    bad += 1
+                    problems.append(f"{m.type}: {e}")
+            for pr in problems:
+                print(f"::{'warning' if good else 'error'} title=catalog {app.id} {abi or 'universal'}::{pr}")
+            bad += 0 if good else 1
         if app.source.startswith("https://"):
             try:
                 src = urllib.parse.quote(app.source, safe=":/?=&%#")

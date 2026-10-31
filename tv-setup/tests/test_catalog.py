@@ -16,8 +16,15 @@ CATALOG = Path(__file__).resolve().parents[1] / "catalog.json"
 
 KODI_HTML = """<html><a href="kodi-20.5-Nexus-arm64-v8a.apk">x</a>
 <a href="kodi-21.2-Omega-arm64-v8a.apk">x</a><a href="kodi-21.10-Omega-arm64-v8a.apk">x</a>
-<a href="kodi-22.0-Piers_alpha1-arm64-v8a.apk">beta</a><a href="kodi-21.2-Omega-armeabi-v7a.apk">x</a></html>"""
+<a href="kodi-22.0-Piers_alpha1-arm64-v8a.apk">beta</a></html>"""
+KODI_ARM_HTML = '<a href="kodi-21.2-Omega-armeabi-v7a.apk">x</a><a href="kodi-21.1-Omega-armeabi-v7a.apk">x</a>'
 VLC_ROOT = '<a href="3.5.4/">3.5.4/</a><a href="3.6.5/">3.6.5/</a><a href="3.10.0/">3.10.0/</a><a href="last/">'
+VLC_BASE = "https://download.videolan.org/pub/videolan/vlc-android/"
+# в самой новой папке ещё нет сборки под armeabi-v7a — берём предыдущую версию
+VLC_PAGES = {VLC_BASE: VLC_ROOT,
+             VLC_BASE + "3.10.0/": '<a href="VLC-Android-3.10.0-arm64-v8a.apk">x</a>',
+             VLC_BASE + "3.6.5/": '<a href="VLC-Android-3.6.5-arm64-v8a.apk">x</a>'
+                                  '<a href="VLC-Android-3.6.5-armeabi-v7a.apk">x</a>'}
 
 
 def fake_http(pages):
@@ -120,27 +127,28 @@ def test_kodi_index_latest_stable_for_abi():
     cat = appcat.load_catalog(CATALOG)
     m = cat.by_id("kodi").methods[0]
     base = "https://mirrors.kodi.tv/releases/android/"
-    http = fake_http({base + "arm64-v8a/": KODI_HTML, base + "armeabi-v7a/": KODI_HTML})
+    http = fake_http({base + "arm64-v8a/": KODI_HTML, base + "arm/": KODI_ARM_HTML})
     url, abi = appcat.resolve_apk_url(m, "arm64-v8a", http)
     assert url == base + "arm64-v8a/kodi-21.10-Omega-arm64-v8a.apk" and abi == "arm64-v8a"
     url, abi = appcat.resolve_apk_url(m, "armeabi-v7a", http)
-    assert url == base + "armeabi-v7a/kodi-21.2-Omega-armeabi-v7a.apk"
+    assert url == base + "arm/kodi-21.2-Omega-armeabi-v7a.apk"   # у Kodi 32-бит лежит в «arm»
 
 
 def test_index_abi_fallback_to_32bit():
     cat = appcat.load_catalog(CATALOG)
     m = cat.by_id("kodi").methods[0]
     base = "https://mirrors.kodi.tv/releases/android/"
-    url, abi = appcat.resolve_apk_url(m, "arm64-v8a", fake_http({base + "armeabi-v7a/": KODI_HTML}))
+    url, abi = appcat.resolve_apk_url(m, "arm64-v8a", fake_http({base + "arm/": KODI_ARM_HTML}))
     assert abi == "armeabi-v7a"
 
 
 def test_vlc_dir_and_template():
     cat = appcat.load_catalog(CATALOG)
     m = cat.by_id("vlc").methods[0]
-    base = "https://download.videolan.org/pub/videolan/vlc-android/"
-    url, abi = appcat.resolve_apk_url(m, "armeabi-v7a", fake_http({base: VLC_ROOT}))
-    assert url == base + "3.10.0/VLC-Android-3.10.0-armeabi-v7a.apk"
+    url, abi = appcat.resolve_apk_url(m, "armeabi-v7a", fake_http(VLC_PAGES))
+    assert url == VLC_BASE + "3.6.5/VLC-Android-3.6.5-armeabi-v7a.apk"
+    url, abi = appcat.resolve_apk_url(m, "arm64-v8a", fake_http(VLC_PAGES))
+    assert url == VLC_BASE + "3.10.0/VLC-Android-3.10.0-arm64-v8a.apk"
 
 
 def test_github_release_asset_selection():
@@ -196,8 +204,8 @@ def test_install_store_app_opens_store(tmp_path):
 def test_install_direct_apk_vlc(tmp_path):
     tv = tv_with_stores()
     eng = make_engine(tmp_path, tv)
-    base = "https://download.videolan.org/pub/videolan/vlc-android/"
-    eng.http_get = fake_http({base: VLC_ROOT})
+    base = VLC_BASE
+    eng.http_get = fake_http(VLC_PAGES)
     urls = []
     orig = eng.downloader
     eng.downloader = lambda url, dest, progress: (urls.append(url), orig(url, dest, progress))[1]

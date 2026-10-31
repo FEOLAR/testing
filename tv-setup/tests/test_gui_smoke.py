@@ -281,7 +281,7 @@ def test_old_android_installs_happ_and_shows_happ_box(tmp_path, quiet_boxes):
 
 
 def test_apps_catalog_page(tmp_path, quiet_boxes):
-    from test_catalog import VLC_ROOT, fake_http, tv_with_stores
+    from test_catalog import VLC_PAGES, fake_http, tv_with_stores
     tv = tv_with_stores(rustore=True)
     tv.packages.add("com.vk.tv")
     eng = make_engine(tmp_path, tv)
@@ -300,7 +300,7 @@ def test_apps_catalog_page(tmp_path, quiet_boxes):
         app._cat_vars["kinopoisk"].set(True)
         app._cat_vars["okko"].set(True)
         app._select_category("tools")
-        eng.http_get = fake_http({"https://download.videolan.org/pub/videolan/vlc-android/": VLC_ROOT})
+        eng.http_get = fake_http(VLC_PAGES)
         app._cat_vars["vlc"].set(True)
         app.on_apps_install_selected()
         assert pump(app, lambda: "VLC" in app.apps_msg.cget("text") and not app._busy, 10)

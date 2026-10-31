@@ -173,35 +173,52 @@ def abis_for(device_abi: str, supported: "list[str]") -> "list[str]":
     return res
 
 
+def _fetch_text(fetch: Callable[[str], bytes], url: str) -> str:
+    try:
+        return fetch(url).decode("utf-8", "replace")
+    except Exception as e:
+        raise CatalogError(f"{url}: {e}") from e
+
+
+def _pick_file(html: str, pattern: str, abi: str) -> Optional[str]:
+    pat = pattern.replace("{abi}", re.escape(abi))
+    found = {(mm.group(0), mm.group(1)) for mm in re.finditer(pat, html)}
+    if not found:
+        return None
+    return max(found, key=lambda x: _vkey(x[1]))[0]
+
+
 def resolve_index_apk(m: Method, device_abi: str, fetch: Callable[[str], bytes]) -> "tuple[str, str]":
-    """Возвращает (url, abi). Листинг каталога загрузок разработчика → самая новая стабильная версия."""
-    last_err: Optional[Exception] = None
+    """Возвращает (url, abi): самая новая стабильная версия из официального листинга загрузок.
+    index_url может содержать {abi} (каталог под процессор; имя каталога можно переопределить
+    через abi_dirs, например у Kodi 32-битные сборки лежат в «arm»). Если задан dir_pattern —
+    сначала выбираются каталоги версий (от новых к старым, до 4 штук), в каждом ищется файл."""
+    errors: list = []
     for abi in abis_for(device_abi, m.get("abis", [])):
         try:
-            base = m.get("index_url").replace("{abi}", abi)
-            version = ""
+            abi_dir = (m.get("abi_dirs") or {}).get(abi, abi)
+            base = m.get("index_url").replace("{abi}", abi_dir)
+            bases = [(base, "")]
             if m.get("dir_pattern"):
-                html = fetch(base).decode("utf-8", "replace")
-                dirs = re.findall(m.get("dir_pattern"), html)
+                dirs = sorted(set(re.findall(m.get("dir_pattern"), _fetch_text(fetch, base))), key=_vkey,
+                              reverse=True)
                 if not dirs:
-                    raise CatalogError(f"в {base} не нашлось версий")
-                version = max(set(dirs), key=_vkey)
-                base = base + version + "/"
-            if m.get("file_template"):
-                url = base + m.get("file_template").format(version=version, abi=abi)
-            else:
-                html = fetch(base).decode("utf-8", "replace")
-                pat = m.get("file_pattern").replace("{abi}", re.escape(abi))
-                found = {(mm.group(0), mm.group(1)) for mm in re.finditer(pat, html)}
-                if not found:
-                    raise CatalogError(f"в {base} нет APK для {abi}")
-                name, _ = max(found, key=lambda x: _vkey(x[1]))
-                url = base + name
-            _check_url(url, m.get("allowed_hosts", []), "index_apk")
-            return url, abi
-        except Exception as e:
-            last_err = e
-    raise CatalogError(f"не нашёл APK: {last_err}")
+                    raise CatalogError(f"{base}: не нашлось каталогов версий")
+                bases = [(base + d + "/", d) for d in dirs[:4]]
+            for b, version in bases:
+                if m.get("file_template") and not m.get("file_pattern"):
+                    url = b + m.get("file_template").format(version=version, abi=abi)
+                else:
+                    name = _pick_file(_fetch_text(fetch, b), m.get("file_pattern"), abi)
+                    if not name:
+                        errors.append(f"{b}: нет APK для {abi}")
+                        continue
+                    url = b + name
+                _check_url(url, m.get("allowed_hosts", []), "index_apk")
+                return url, abi
+        except CatalogError as e:
+            errors.append(str(e))
+    raise CatalogError("не нашёл APK: " + "; ".join(errors))
 
 
 def resolve_github_release(m: Method, device_abi: str, fetch: Callable[[str], bytes]) -> "tuple[str, str]":
