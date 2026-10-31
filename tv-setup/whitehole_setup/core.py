@@ -33,7 +33,15 @@ ADB_PORT = 5555
 
 LAUNCHER_PKG = "space.whitehole.tv"
 LAUNCHER_ACTIVITY = "space.whitehole.tv/.MainActivity"
-LAUNCHER_URL = "https://github.com/FEOLAR/testing/releases/download/tv-launcher-latest/whitehole-tv.apk"
+LAUNCHER_BASE = "https://github.com/FEOLAR/testing/releases/download/tv-launcher-latest/"
+LAUNCHER_URL = LAUNCHER_BASE + "whitehole-tv.apk"   # универсальный APK
+# Отдельные APK под процессор (если они есть в релизе) — меньше и быстрее ставятся.
+LAUNCHER_ABI_ASSETS = {
+    "arm64-v8a": "whitehole-tv-arm64-v8a.apk",
+    "armeabi-v7a": "whitehole-tv-armeabi-v7a.apk",
+}
+# Встроенный VPN лаунчера рассчитан на Android 7+ (SDK 24); на более старых ставим Happ.
+HAPP_MIN_SDK_WITHOUT = 24
 
 HAPP_PKG = "su.happ.proxyutility"
 HAPP_URL = "https://github.com/Happ-proxy/happ-android/releases/latest/download/Happ.apk"
@@ -163,6 +171,14 @@ class DeviceInfo:
     is_tv: bool = True         # есть feature android.software.leanback (или известная ТВ-оболочка)
     home_apps: "list[str]" = field(default_factory=list)   # пакеты, умеющие быть домашним экраном
     current_home: str = ""     # компонент, который сейчас открывается по «Домой»
+    abi: str = ""              # ro.product.cpu.abi (arm64-v8a / armeabi-v7a / x86…)
+    has_happ: bool = False
+    has_launcher: bool = False
+
+    @property
+    def needs_happ(self) -> bool:
+        """На Android < 7 встроенный VPN WhiteHole не работает — нужен Happ."""
+        return bool(self.sdk) and self.sdk < HAPP_MIN_SDK_WITHOUT
 
     @property
     def profile(self) -> "profiles.Profile":
@@ -562,10 +578,13 @@ class Engine:
         except ValueError:
             info.sdk = 0
         info.hw_serial = self.adb.getprop(s, "ro.serialno")
+        info.abi = self.adb.getprop(s, "ro.product.cpu.abi")
         try:
             pkgs = self.adb.packages(s)
         except SetupError:
             pkgs = set()
+        info.has_happ = HAPP_PKG in pkgs
+        info.has_launcher = LAUNCHER_PKG in pkgs
         prof = profiles.detect_profile(pkgs)
         info.profile_id = prof.id
         info.brand_key = profiles.brand_key(info.manufacturer, info.brand, pkgs)
@@ -748,28 +767,57 @@ class Engine:
             raise SetupError(f"Не получилось скачать {label}. Проверь интернет на компьютере и попробуй ещё раз.",
                              "download", repr(e))
 
+    def fetch_launcher(self, dev: DeviceInfo, progress: ProgressCb = _noop_progress) -> Path:
+        """APK под процессор ТВ, если такой файл есть в релизе, иначе универсальный."""
+        if not dev.abi:
+            dev.abi = self.adb.getprop(dev.serial, "ro.product.cpu.abi")
+        asset = LAUNCHER_ABI_ASSETS.get(dev.abi)
+        if asset:
+            url = LAUNCHER_BASE + asset
+            try:
+                path = self.downloader(url, self.data_dir / asset,
+                                       lambda f, t: progress(f, f"Скачиваю лаунчер WhiteHole ({dev.abi}): {t}"))
+                self.log(f"Лаунчер под процессор {dev.abi}: {asset}")
+                return path
+            except Exception as e:  # нет такого файла в релизе (404) или сеть — берём универсальный
+                code = getattr(e, "code", None)
+                self.log(f"{asset}: {'нет в релизе' if code == 404 else repr(e)} — беру универсальный APK")
+        else:
+            self.log(f"Процессор {dev.abi or '?'} — универсальный APK")
+        return self._fetch(LAUNCHER_URL, "whitehole-tv.apk", progress, "лаунчер WhiteHole")
+
     def install_all(self, dev: DeviceInfo, reinstall_happ: bool = False,
-                    progress: ProgressCb = _noop_progress) -> "list[str]":
-        """Ставит лаунчер и Happ, делает лаунчер домашним экраном. Возвращает список сделанного."""
+                    progress: ProgressCb = _noop_progress, with_happ: bool = False) -> "list[str]":
+        """Ставит лаунчер WhiteHole (со встроенным VPN) и делает его домашним экраном.
+        Happ ставится, только если Android < 7 или пользователь сам попросил (with_happ / reinstall_happ)."""
         done: list = []
         pkgs = self.adb.packages(dev.serial)
-        need_happ = reinstall_happ or HAPP_PKG not in pkgs
+        dev.has_happ = HAPP_PKG in pkgs
+        if not dev.sdk:
+            try:
+                dev.sdk = int(self.adb.getprop(dev.serial, "ro.build.version.sdk") or 0)
+            except ValueError:
+                dev.sdk = 0
+        want_happ = with_happ or reinstall_happ or dev.needs_happ
+        need_happ = want_happ and (with_happ or reinstall_happ or not dev.has_happ)
         if not dev.current_home:
             dev.current_home = self.current_home(dev.serial)
         self._remember_original_home(dev)
 
-        launcher_apk = self._fetch(LAUNCHER_URL, "whitehole-tv.apk", progress, "лаунчер WhiteHole")
+        launcher_apk = self.fetch_launcher(dev, progress)
         happ_apk = self._fetch(HAPP_URL, "Happ.apk", progress, "Happ") if need_happ else None
 
         progress(None, "Устанавливаю лаунчер WhiteHole на телевизор…")
         self.adb.install(dev.serial, str(launcher_apk))
-        done.append("Лаунчер WhiteHole установлен")
+        dev.has_launcher = True
+        done.append("Лаунчер WhiteHole установлен (VPN уже встроен)")
 
         if happ_apk:
             progress(None, "Устанавливаю Happ на телевизор…")
             self.adb.install(dev.serial, str(happ_apk))
-            done.append("Happ установлен")
-        else:
+            dev.has_happ = True
+            done.append("Happ установлен" + (" — на этом Android VPN работает через него" if dev.needs_happ else ""))
+        elif want_happ:
             done.append("Happ уже был установлен — не трогал")
 
         progress(None, "Делаю WhiteHole домашним экраном…")
@@ -778,6 +826,37 @@ class Engine:
         self.adb.shell(dev.serial, f"am start -n {LAUNCHER_ACTIVITY}", timeout=15)
         progress(1.0, "Готово")
         return done
+
+    def open_launcher(self, dev: DeviceInfo) -> None:
+        if LAUNCHER_PKG not in self.adb.packages(dev.serial):
+            raise SetupError("На телевизоре ещё нет WhiteHole. Сначала сделай шаг «Установить».", "no_launcher")
+        code, out = self.adb.shell(dev.serial, f"am start -n {LAUNCHER_ACTIVITY}", timeout=15)
+        if code != 0 or "Error" in out:
+            raise SetupError("Не получилось открыть WhiteHole на телевизоре. Открой его пультом.", "open", out)
+
+    def grant_vpn(self, dev: DeviceInfo) -> None:
+        """Заранее выдаёт WhiteHole разрешение на VPN, чтобы на ТВ не появлялось системное окно
+        «Разрешить подключение к VPN?».
+
+        Как это работает: согласие пользователя на VpnService система хранит как app-op
+        ACTIVATE_VPN (= OP_ACTIVATE_VPN, «granted to apps that have already been given user consent
+        to start VpnService based VPN connections» — AppOpsManager, AOSP commit 3eb9520d1a4d,
+        https://android.googlesource.com/platform/frameworks/base/+/3eb9520d1a4d%5E%21/).
+        VpnService.prepare() возвращает null (диалога нет), если приложение уже «предварительно
+        согласовано» (javadoc VpnService.prepare / prepareAndAuthorize →
+        setVpnPackageAuthorization, https://chromium.googlesource.com/android_tools/+/HEAD/sdk/sources/android-25/android/net/VpnService.java).
+        `appops set … ACTIVATE_VPN allow` из adb shell ставит тот же флаг. Проверено владельцем на Tuvio
+        (Android 11); на прошивках отдельных производителей может не сработать — тогда ТВ один раз
+        покажет обычное окно.
+        """
+        if LAUNCHER_PKG not in self.adb.packages(dev.serial):
+            raise SetupError("Сначала установи WhiteHole (шаг «Установить»).", "no_launcher")
+        code, out = self.adb.shell(dev.serial, f"appops set {LAUNCHER_PKG} ACTIVATE_VPN allow", timeout=15)
+        _, check = self.adb.shell(dev.serial, f"appops get {LAUNCHER_PKG} ACTIVATE_VPN", timeout=15)
+        if "allow" not in check.lower():
+            raise SetupError("Телевизор не дал выдать разрешение заранее. Ничего страшного: при первом "
+                             "подключении на ТВ появится окно «Разрешить подключение к VPN?» — нажми ОК.",
+                             "appops", out + "\n" + check)
 
     def set_home(self, serial: str, component: str) -> bool:
         code, out = self.adb.shell(serial, f"cmd package set-home-activity {shlex.quote(component)}")

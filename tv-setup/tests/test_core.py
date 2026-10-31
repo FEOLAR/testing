@@ -34,6 +34,8 @@ class FakeTV:
     def __init__(self, packages=None, state="device", connect_out="connected to " + SERIAL,
                  home=None, leanback=True, sdk=30, stock_wins=False, props=None, listed=True):
         self.listed = listed  # виден ли ТВ в `adb devices` до `adb connect`
+        self.appops = {}
+        self.appops_blocked = False
         self.packages = set(packages if packages is not None else YANDEX_PKGS)
         self.disabled = set()
         self.state = state
@@ -122,6 +124,15 @@ class FakeTV:
         if cmd.startswith("cmd package query-activities"):
             homes = [p for p in sorted(HOME_PKGS) if self._enabled(p)]
             return 0, "\n".join(f"{p}/.HomeActivity" for p in homes)
+        if cmd.startswith("appops set "):
+            _, _, pkg, op, mode = cmd.split()
+            if not self.appops_blocked:
+                self.appops[(pkg, op)] = mode
+            return 0, ""
+        if cmd.startswith("appops get "):
+            _, _, pkg, op = cmd.split()
+            mode = self.appops.get((pkg, op))
+            return 0, f"{op}: {mode}; time=+1m" if mode else "No operations."
         if cmd.startswith("am start"):
             return 0, "Starting: Intent { ... }"
         if cmd.startswith("input keyevent"):
@@ -269,26 +280,113 @@ def test_wait_authorized_timeout(tmp_path):
 
 # ------------------------------------------------------------ установка
 
-def test_install_all_fresh(tmp_path):
-    tv = FakeTV()
+def installed(tv):
+    return [Path(c[-1]).name for c in tv.calls if len(c) > 2 and c[2] == "install"]
+
+
+def test_install_all_fresh_no_happ_by_default(tmp_path):
+    tv = FakeTV()  # Android 11 — VPN встроен в лаунчер, Happ не нужен
     eng = make_engine(tmp_path, tv)
     done = eng.install_all(dev(eng))
-    installs = [c[-1] for c in tv.calls if len(c) > 2 and c[2] == "install"]
-    assert [Path(p).name for p in installs] == ["whitehole-tv.apk", "Happ.apk"]
+    assert installed(tv) == ["whitehole-tv.apk"]
     assert all(c[3] == "-r" for c in tv.calls if len(c) > 2 and c[2] == "install")
     assert tv.home == "space.whitehole.tv/.MainActivity"
+    assert not any("Happ" in x for x in done)
+    assert "su.happ.proxyutility" not in tv.packages
+
+
+def test_install_happ_by_checkbox(tmp_path):
+    tv = FakeTV()
+    eng = make_engine(tmp_path, tv)
+    done = eng.install_all(dev(eng), with_happ=True)
+    assert installed(tv) == ["whitehole-tv.apk", "Happ.apk"]
     assert "Happ установлен" in done
+
+
+def test_install_happ_on_old_android(tmp_path):
+    tv = FakeTV(sdk=23, props={"ro.build.version.release": "6.0.1"})
+    eng = make_engine(tmp_path, tv)
+    d = dev(eng)
+    assert d.needs_happ
+    eng.install_all(d)
+    assert installed(tv) == ["whitehole-tv.apk", "Happ.apk"]
+    tv.calls.clear()
+    eng.install_all(d)  # Happ уже стоит — без галочки не переустанавливаем
+    assert installed(tv) == ["whitehole-tv.apk"]
 
 
 def test_install_skips_existing_happ(tmp_path):
     tv = FakeTV(packages=YANDEX_PKGS | {"su.happ.proxyutility"})
     eng = make_engine(tmp_path, tv)
     eng.install_all(dev(eng))
-    installs = [Path(c[-1]).name for c in tv.calls if len(c) > 2 and c[2] == "install"]
-    assert installs == ["whitehole-tv.apk"]
+    assert installed(tv) == ["whitehole-tv.apk"]
     eng.install_all(dev(eng), reinstall_happ=True)
-    installs = [Path(c[-1]).name for c in tv.calls if len(c) > 2 and c[2] == "install"]
-    assert installs.count("Happ.apk") == 1
+    assert installed(tv).count("Happ.apk") == 1
+
+
+def test_launcher_abi_asset(tmp_path):
+    tv = FakeTV(props={"ro.product.cpu.abi": "arm64-v8a"})
+    eng = make_engine(tmp_path, tv)
+    urls = []
+    orig = eng.downloader
+
+    def dl(url, dest, progress):
+        urls.append(url)
+        return orig(url, dest, progress)
+    eng.downloader = dl
+    eng.install_all(dev(eng))
+    assert installed(tv) == ["whitehole-tv-arm64-v8a.apk"]
+    assert urls == [core.LAUNCHER_BASE + "whitehole-tv-arm64-v8a.apk"]
+
+
+def test_launcher_abi_asset_missing_falls_back(tmp_path):
+    import urllib.error
+    tv = FakeTV(props={"ro.product.cpu.abi": "armeabi-v7a"})
+    eng = make_engine(tmp_path, tv)
+    orig = eng.downloader
+    urls = []
+
+    def dl(url, dest, progress):
+        urls.append(url)
+        if url.endswith("armeabi-v7a.apk"):
+            raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+        return orig(url, dest, progress)
+    eng.downloader = dl
+    eng.install_all(dev(eng))
+    assert installed(tv) == ["whitehole-tv.apk"]
+    assert urls == [core.LAUNCHER_BASE + "whitehole-tv-armeabi-v7a.apk", core.LAUNCHER_URL]
+
+
+def test_unknown_abi_uses_universal(tmp_path):
+    tv = FakeTV(props={"ro.product.cpu.abi": "x86"})
+    eng = make_engine(tmp_path, tv)
+    eng.install_all(dev(eng))
+    assert installed(tv) == ["whitehole-tv.apk"]
+
+
+def test_open_launcher_and_grant_vpn(tmp_path):
+    tv = FakeTV()
+    eng = make_engine(tmp_path, tv)
+    d = dev(eng)
+    with pytest.raises(SetupError) as e:
+        eng.grant_vpn(d)
+    assert e.value.kind == "no_launcher"
+    with pytest.raises(SetupError):
+        eng.open_launcher(d)
+    eng.install_all(d)
+    eng.open_launcher(d)
+    eng.grant_vpn(d)
+    assert tv.appops == {("space.whitehole.tv", "ACTIVATE_VPN"): "allow"}
+    assert "appops set space.whitehole.tv ACTIVATE_VPN allow" in tv.shell_cmds()
+
+
+def test_grant_vpn_refused_by_firmware(tmp_path):
+    tv = FakeTV(packages=YANDEX_PKGS | {"space.whitehole.tv"})
+    tv.appops_blocked = True
+    eng = make_engine(tmp_path, tv)
+    with pytest.raises(SetupError) as e:
+        eng.grant_vpn(dev(eng))
+    assert e.value.kind == "appops" and "ОК" in e.value.message
 
 
 def test_install_failure_message(tmp_path):

@@ -200,10 +200,15 @@ def test_window_flow(tmp_path, monkeypatch):
         app.on_install()
         assert pump(app, lambda: "install" in app.done)
 
-        app.show_step("sub")
-        app.sub_entry.insert(0, "https://s.example.com/sub/1")
-        app.on_sub()
-        assert pump(app, lambda: "sub" in app.done)
+        assert "su.happ.proxyutility" not in tv.packages   # Android 11 — Happ не ставим
+        app.show_step("login")
+        app.update()
+        assert not app.happ_box.winfo_manager()              # блок Happ скрыт
+        app.on_open_launcher()
+        assert pump(app, lambda: "login" in app.done and not app._busy)
+        app.on_grant_vpn()
+        assert pump(app, lambda: "✓" in app.vpn_msg.cget("text"))
+        assert tv.appops == {("space.whitehole.tv", "ACTIVATE_VPN"): "allow"}
 
         app.show_step("ads")
         pump(app, lambda: not app._busy)
@@ -250,5 +255,26 @@ def test_window_google_tv_optin(tmp_path, monkeypatch):
         app.on_ads()
         assert pump(app, lambda: "ads" in app.done)
         assert tv.disabled == {"com.google.android.apps.tv.launcherx"}
+    finally:
+        app.on_close()
+
+
+def test_old_android_installs_happ_and_shows_happ_box(tmp_path, quiet_boxes):
+    tv = FakeTV(sdk=23, props={"ro.build.version.release": "6.0.1"})
+    eng = make_engine(tmp_path, tv)
+    app = make_app(engine=eng, start_adb=False)
+    try:
+        app._device_ready(eng.device_info("192.168.3.19:5555", "device"))
+        app.show_step("install")
+        assert app.with_happ.get() == 1 and "6.0.1" in app.happ_note.cget("text")
+        app.on_install()
+        assert pump(app, lambda: "install" in app.done)
+        assert "su.happ.proxyutility" in tv.packages
+        app.show_step("login")
+        app.update()
+        assert app.happ_box.winfo_manager() == "grid"
+        app.sub_entry.insert(0, "https://s.example.com/sub/1")
+        app.on_sub()
+        assert pump(app, lambda: "✓" in app.sub_msg.cget("text"))
     finally:
         app.on_close()

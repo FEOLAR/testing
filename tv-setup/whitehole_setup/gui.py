@@ -24,7 +24,7 @@ CARD = RAISED  # карточки и второстепенные кнопки �
 STEPS = [
     ("find", "Найти телевизор", ""),
     ("install", "Установить", ""),
-    ("sub", "Подписка", "по желанию"),
+    ("login", "Вход", "через Telegram"),
     ("ads", "Убрать рекламу", "для продвинутых"),
     ("restore", "Вернуть как было", ""),
 ]
@@ -231,7 +231,7 @@ class App(ctk.CTk):
         self.pages = {
             "find": self._page_find(),
             "install": self._page_install(),
-            "sub": self._page_sub(),
+            "login": self._page_login(),
             "ads": self._page_ads(),
             "restore": self._page_restore(),
         }
@@ -349,32 +349,75 @@ class App(ctk.CTk):
     def _page_install(self) -> ctk.CTkFrame:
         f = self._page()
         self._h1(f, "Установить WhiteHole", 0)
-        self._p(f, "Скачаю свежий лаунчер WhiteHole и VPN-приложение Happ и поставлю их на телевизор. "
-                   "WhiteHole станет домашним экраном — без рекламы и лишней нагрузки.", 1)
-        self.reinstall_happ = ctk.CTkCheckBox(f, text="Переустановить Happ, даже если он уже стоит",
-                                              font=self.f_body, text_color=TEXT, fg_color=ACCENT,
-                                              hover_color=ACCENT_HOVER, border_color=MUTED, checkmark_color=ACCENT_TEXT)
-        self.reinstall_happ.grid(row=2, column=0, sticky="w", padx=28, pady=(4, 8))
-        self._big_button(f, "Установить", self.on_install, 3)
-        self.install_msg = self._p(f, "", 4, color=TEXT)
+        self._p(f, texts.INSTALL_INTRO, 1)
+        self.with_happ = ctk.CTkCheckBox(f, text="Также установить Happ", font=self.f_body, text_color=TEXT,
+                                         fg_color=ACCENT, hover_color=ACCENT_HOVER, border_color=MUTED,
+                                         checkmark_color=ACCENT_TEXT)
+        self.with_happ.grid(row=2, column=0, sticky="w", padx=28, pady=(4, 0))
+        self.reinstall_happ = self.with_happ  # совместимость
+        self.happ_note = self._p(f, texts.HAPP_OPTIONAL, 3, font=self.f_small, pady=(2, 8))
+        self._big_button(f, "Установить", self.on_install, 4)
+        self.install_msg = self._p(f, "", 5, color=TEXT)
         return f
 
-    def _page_sub(self) -> ctk.CTkFrame:
-        f = self._page()
-        self._h1(f, "Подписка", 0, "по желанию")
-        self._p(f, "Вставь ссылку на подписку из бота (Моя подписка):", 1, color=TEXT)
-        row = ctk.CTkFrame(f, fg_color="transparent")
-        row.grid(row=2, column=0, sticky="ew", padx=28, pady=(0, 8))
-        row.grid_columnconfigure(0, weight=1)
-        self.sub_entry = ctk.CTkEntry(row, height=42, corner_radius=12, font=self.f_body, fg_color=CARD,
+    def _refresh_install_page(self) -> None:
+        d = self.device
+        if d is not None and d.needs_happ:
+            self.with_happ.select()
+            self.with_happ.configure(text="Также установить Happ (нужен на этом телевизоре)")
+            self.happ_note.configure(text=texts.HAPP_REQUIRED.format(android=d.android or "?"), text_color=WARN)
+        else:
+            self.with_happ.configure(text="Также установить Happ")
+            self.happ_note.configure(text=texts.HAPP_OPTIONAL, text_color=MUTED)
+
+    def _page_login(self) -> ctk.CTkFrame:
+        f = ctk.CTkScrollableFrame(self.content, fg_color="transparent")
+        f.grid_columnconfigure(0, weight=1)
+        self._h1(f, "Вход", 0)
+        self._p(f, texts.LOGIN_STEPS, 1, color=TEXT)
+        self._big_button(f, "Открыть WhiteHole на ТВ", self.on_open_launcher, 2)
+        self.login_msg = self._p(f, "", 3, color=TEXT, pady=(0, 6))
+
+        # Разрешение VPN заранее (необязательно)
+        self._h2(f, "Разрешить VPN заранее", 4, "по желанию")
+        self._p(f, texts.VPN_GRANT, 5, font=self.f_small)
+        b = self._small_button(f, "Разрешить VPN заранее", self.on_grant_vpn, width=230)
+        b.grid(row=6, column=0, sticky="w", padx=28, pady=(2, 6))
+        self.vpn_msg = self._p(f, "", 7, color=TEXT, pady=(0, 8))
+
+        # Старые телевизоры: подписка в Happ
+        self.happ_box = ctk.CTkFrame(f, fg_color=CARD, corner_radius=12)
+        self.happ_box.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(self.happ_box, text="Для Happ (старые телевизоры)", font=self.f_btn, text_color=TEXT,
+                     anchor="w").grid(row=0, column=0, columnspan=2, sticky="w", padx=14, pady=(12, 2))
+        ctk.CTkLabel(self.happ_box, text=texts.SUB_HINT, font=self.f_small, text_color=MUTED, justify="left",
+                     anchor="w", wraplength=480).grid(row=1, column=0, columnspan=2, sticky="w", padx=14)
+        self.sub_entry = ctk.CTkEntry(self.happ_box, height=40, corner_radius=12, font=self.f_body, fg_color=PANEL,
                                       border_color=BORDER, placeholder_text="https://…")
-        self.sub_entry.grid(row=0, column=0, sticky="ew")
+        self.sub_entry.grid(row=2, column=0, sticky="ew", padx=(14, 0), pady=8)
         focus_ring(self.sub_entry)
-        self._small_button(row, "Вставить", self.paste_sub, width=110).grid(row=0, column=1, padx=(10, 0))
-        self._big_button(f, "Отправить в Happ на телевизоре", self.on_sub, 3)
-        self._p(f, texts.SUB_HINT, 4, font=self.f_small)
-        self.sub_msg = self._p(f, "", 5, color=TEXT)
+        self._small_button(self.happ_box, "Вставить", self.paste_sub, width=100).grid(row=2, column=1, padx=14)
+        self._small_button(self.happ_box, "Отправить в Happ на телевизоре", self.on_sub, width=280).grid(
+            row=3, column=0, columnspan=2, sticky="w", padx=14, pady=(0, 6))
+        self.sub_msg = ctk.CTkLabel(self.happ_box, text="", font=self.f_small, text_color=TEXT, justify="left",
+                                    anchor="w", wraplength=480)
+        self.sub_msg.grid(row=4, column=0, columnspan=2, sticky="w", padx=14, pady=(0, 10))
         return f
+
+    def _h2(self, parent, text: str, row: int, tag: str = "") -> None:
+        box = ctk.CTkFrame(parent, fg_color="transparent")
+        box.grid(row=row, column=0, sticky="w", padx=28, pady=(14, 4))
+        ctk.CTkLabel(box, text=text, font=self.f_btn, text_color=TEXT).pack(side="left")
+        if tag:
+            ctk.CTkLabel(box, text=f" {tag} ", font=self.f_small, text_color=MUTED, fg_color=RAISED,
+                         corner_radius=8).pack(side="left", padx=10)
+
+    def _refresh_login_page(self) -> None:
+        d = self.device
+        if d is not None and (d.has_happ or d.needs_happ):
+            self.happ_box.grid(row=8, column=0, sticky="ew", padx=28, pady=(6, 12))
+        else:
+            self.happ_box.grid_remove()
 
     def _page_ads(self) -> ctk.CTkFrame:
         f = self._page()
@@ -465,6 +508,10 @@ class App(ctk.CTk):
                 page.grid_remove()
         self.current = key
         self._refresh_steps()
+        if key == "install":
+            self._refresh_install_page()
+        if key == "login":
+            self._refresh_login_page()
         if key == "ads" and self.device and not self._busy:
             self.on_ads_check()
 
@@ -842,14 +889,14 @@ class App(ctk.CTk):
         if not self._need_device():
             return
         d = self.device
-        reinstall = bool(self.reinstall_happ.get())
+        with_happ = bool(self.with_happ.get())
         self.install_msg.configure(text="")
 
         def ok(done):
             home_ok = any("теперь домашний экран" in x for x in done)
             self.install_msg.configure(
                 text="\n".join(("✓ " if (home_ok or "домашн" not in x.lower()) else "⚠ ") + x for x in done)
-                + ("\n\nНажми «Домой» на пульте — увидишь WhiteHole." if home_ok else ""),
+                + ("\n\nНажми «Домой» на пульте — увидишь WhiteHole. Дальше — шаг «Вход»." if home_ok else ""),
                 text_color=SUCCESS if home_ok else WARN)
             self.device_label.configure(text="Телевизор:\n" + (d.platform_line or d.title)
                                         + (f"\n{d.ip}" if d.ip else ""))
@@ -858,10 +905,39 @@ class App(ctk.CTk):
         def err(e: SetupError):
             self.install_msg.configure(text=e.message, text_color=DANGER)
 
-        self.run_task(lambda: self.engine.install_all(d, reinstall, self.progress_cb), ok, err,
+        self.run_task(lambda: self.engine.install_all(d, progress=self.progress_cb, with_happ=with_happ), ok, err,
                       busy_text="Готовлюсь к установке…")
 
-    # ------------------------------------------------------------ шаг 3
+    # ------------------------------------------------------------ шаг 3: вход
+
+    def on_open_launcher(self) -> None:
+        if not self._need_device():
+            return
+        d = self.device
+
+        def ok(_):
+            self.login_msg.configure(text="✓ WhiteHole открыт на телевизоре — нажми там «Войти через Telegram».",
+                                     text_color=SUCCESS)
+            self.mark_done("login")
+
+        def err(e: SetupError):
+            self.login_msg.configure(text=e.message, text_color=DANGER)
+
+        self.run_task(lambda: self.engine.open_launcher(d), ok, err, busy_text="Открываю WhiteHole на ТВ…")
+
+    def on_grant_vpn(self) -> None:
+        if not self._need_device():
+            return
+        d = self.device
+
+        def ok(_):
+            self.vpn_msg.configure(text="✓ Готово: окно «Разрешить подключение к VPN?» на телевизоре "
+                                        "появляться не должно.", text_color=SUCCESS)
+
+        def err(e: SetupError):
+            self.vpn_msg.configure(text=e.message, text_color=WARN if e.kind == "appops" else DANGER)
+
+        self.run_task(lambda: self.engine.grant_vpn(d), ok, err, busy_text="Выдаю разрешение VPN…")
 
     def paste_sub(self) -> None:
         try:
@@ -885,7 +961,7 @@ class App(ctk.CTk):
         def ok(_):
             self.sub_msg.configure(text="✓ Отправил. На телевизоре открылся Happ — подтверди добавление "
                                         "подписки пультом и нажми «Подключиться».", text_color=SUCCESS)
-            self.mark_done("sub")
+            self.mark_done("login")
 
         def err(e: SetupError):
             self.sub_msg.configure(text=e.message, text_color=DANGER)
