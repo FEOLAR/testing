@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Встроенный VPN (пакет space.whitehole.tv.vpn). Отдельный файл — чтобы не конфликтовать со strings.xml при слиянии. -->
+<resources>
+    <string name="vpn_btn_connect">Подключить</string>
+    <string name="vpn_btn_disconnect">Отключить</string>
+    <string name="vpn_btn_server">Сервер: %1$s</string>
+
+    <string name="vpn_status_connecting">Подключение…</string>
+    <string name="vpn_status_on">Защищено · %1$s</string>
+    <string name="vpn_status_error">Не удалось подключиться</string>
+
+    <string name="vpn_pair_done">Готово! Нажми «Подключить» и разреши VPN, если телевизор спросит.</string>
+
+    <string name="vpn_notif_channel">VPN</string>
+    <string name="vpn_notif_connecting">Подключение…</string>
+    <string name="vpn_notif_on">Подключено · %1$s</string>
+    <string name="vpn_notif_stop">Отключить</string>
+
+    <string name="vpn_err_consent">Разрешение на VPN не выдано — нажми «Подключить» ещё раз и выбери «ОК»</string>
+    <string name="vpn_err_no_dialog">Телевизор не показал окно разрешения VPN. С компьютера: adb shell appops set space.whitehole.tv ACTIVATE_VPN allow</string>
+    <string name="vpn_err_no_sub_url">Подписка не найдена — открой «Подписка» → «Обновить» или войди заново</string>
+    <string name="vpn_err_sub">Не удалось загрузить подписку — проверь интернет</string>
+    <string name="vpn_err_sub_gone">Подписка не найдена или закончилась — продли в боте</string>
+    <string name="vpn_err_devices">Достигнут лимит устройств — удали старое устройство в боте («Сбросить устройства»)</string>
+    <string name="vpn_err_no_servers">В подписке нет доступных серверов — проверь подписку в боте</string>
+    <string name="vpn_err_servers">Серверы не отвечают — попробуй другой сервер или позже</string>
+    <string name="vpn_err_core">Не удалось запустить VPN</string>
+    <string name="vpn_revoked">VPN выключен в настройках или другим приложением</string>
+
+    <string name="vpn_servers_title">Сервер</string>
+    <string name="vpn_servers_hint">«Авто» сам выбирает работающий сервер. Резервные — если основные не открываются.</string>
+    <string name="vpn_servers_loading">Загружаю список серверов…</string>
+    <string name="vpn_servers_failed">Не удалось загрузить список серверов</string>
+    <string name="vpn_servers_reserve">Резервные</string>
+    <string name="vpn_servers_retry">Обновить список</string>
+    <string name="vpn_set_adblock">Блокировать рекламу и трекеры (тест)</string>
+</resources>

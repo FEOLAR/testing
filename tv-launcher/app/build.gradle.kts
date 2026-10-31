@@ -21,6 +21,30 @@ android {
         buildConfig = true
     }
 
+    // ----- Встроенный VPN (ядро Xray из libv2ray.aar, см. vpn/README.md) -----
+    // Отдельные APK под armeabi-v7a и arm64-v8a + универсальный (оба ABI). x86 не собираем.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("armeabi-v7a", "arm64-v8a")
+            isUniversalApk = true
+        }
+    }
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true // .so сжаты в APK (меньше размер скачивания)
+            excludes += listOf("lib/x86/**", "lib/x86_64/**")
+        }
+    }
+    sourceSets {
+        // geoip.dat / geosite.dat кладёт CI (vpn/fetch-deps.sh); в git их нет
+        getByName("main").assets.srcDir("vpn-assets")
+    }
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
+
     // Ключ подписи хранится в репозитории намеренно (v1, подарочное приложение):
     // стабильный ключ нужен, чтобы обновления ставились поверх старой версии.
     signingConfigs {
@@ -57,4 +81,9 @@ android {
 
 dependencies {
     implementation("com.google.zxing:core:3.5.3")
+    // AndroidLibXrayLite (2dust) — скачивается в CI скриптом vpn/fetch-deps.sh (версия и sha256 закреплены там)
+    implementation(files("libs/libv2ray.aar"))
+
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303") // настоящий org.json для JVM-тестов (в android.jar — заглушки)
 }

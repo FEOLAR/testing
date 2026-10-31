@@ -52,12 +52,14 @@ import android.widget.ProgressBar
 import org.json.JSONObject
 import java.util.Calendar
 import java.util.TimeZone
+import space.whitehole.tv.vpn.VpnHomeHook
 
 class MainActivity : Activity() {
 
     private enum class Page { HOME, APPS, HELP, PAIR, SUB, SETTINGS }
 
     internal lateinit var session: Session
+    private lateinit var vpnHook: VpnHomeHook // встроенный VPN (пакет vpn)
     internal lateinit var prefs: Prefs
     internal lateinit var choiceDialog: ChoiceDialog
     private lateinit var settings: SettingsScreen
@@ -446,6 +448,12 @@ class MainActivity : Activity() {
         loadHeroBackground(realMetrics.widthPixels, realMetrics.heightPixels)
 
         connectivity = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        vpnHook = VpnHomeHook(this, btnConnect, statusDot, statusText, connectAnim) {
+            if (!destroyed) {
+                updateVpnStatus()
+                updateHomeUi()
+            }
+        }
         registerVpnCallback()
         registerPackageReceiver()
 
@@ -463,6 +471,7 @@ class MainActivity : Activity() {
         refreshInputs()
         mainHandler.removeCallbacks(clockTick)
         clockTick.run()
+        vpnHook.onResume()
         updateVpnStatus()
         reloadApps()
         resumed = true
@@ -493,6 +502,7 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         destroyed = true
+        if (::vpnHook.isInitialized) vpnHook.release()
         mainHandler.removeCallbacksAndMessages(null)
         if (vpnCallbackRegistered) {
             try {
@@ -680,6 +690,10 @@ class MainActivity : Activity() {
     private fun onConnectClicked() {
         if (!session.paired) {
             openPair()
+            return
+        }
+        if (vpnHook.enabled) {
+            vpnHook.toggle(session) // встроенный VPN, без Happ
             return
         }
         connectHapp()
@@ -1445,6 +1459,11 @@ class MainActivity : Activity() {
 
     private fun updateVpnStatus() {
         if (destroyed) return
+        // встроенный VPN включён/подключается/ошибка — статус и анимацию ведёт VpnHomeHook
+        if (::vpnHook.isInitialized && vpnHook.applyStatus()) {
+            lastVpnActive = isVpnActive()
+            return
+        }
         val active = isVpnActive()
         if (active) {
             statusDot.setBackgroundResource(R.drawable.dot_green)
@@ -1467,8 +1486,10 @@ class MainActivity : Activity() {
     // ---------- Главная: вход / подписка ----------
 
     private fun updateHomeUi() {
+        if (::vpnHook.isInitialized) vpnHook.setPaired(session.paired)
         if (session.paired) {
-            btnConnect.setText(R.string.btn_connect)
+            val vpnLabel = if (::vpnHook.isInitialized) vpnHook.connectLabel() else null
+            if (vpnLabel != null) btnConnect.text = vpnLabel else btnConnect.setText(R.string.btn_connect)
             btnSub.visibility = View.VISIBLE
             val me = session.me
             val line = if (me != null) subLineText(me) else null
@@ -1509,6 +1530,7 @@ class MainActivity : Activity() {
                     when {
                         r.code == 401 -> {
                             session.clear()
+                            vpnHook.onUnpaired()
                             Toast.makeText(this, R.string.unpaired, Toast.LENGTH_LONG).show()
                             if (page == Page.SUB) showPage(Page.HOME, true) else updateHomeUi()
                         }
@@ -1580,6 +1602,7 @@ class MainActivity : Activity() {
         disarmUnpair()
         val token = session.token
         session.clear()
+        vpnHook.onUnpaired()
         if (token != null) {
             try {
                 io.execute { Api.unpair(token) }
@@ -1704,7 +1727,7 @@ class MainActivity : Activity() {
         refreshMe(true)
         // Даём увидеть «Телевизор подключён», потом отдаём подписку в Happ
         val happ = happPackage ?: AppRepository.findHapp(this, apps)
-        if (happ != null && sub != null) {
+        if (happ != null && sub != null && !vpnHook.enabled) { // со встроенным VPN Happ не нужен
             happPackage = happ
             mainHandler.postDelayed({
                 if (!destroyed && session.subUrl == sub && session.pushedSubUrl != sub && page == Page.PAIR) {
@@ -1715,8 +1738,14 @@ class MainActivity : Activity() {
     }
 
     private fun showPairDone() {
-        val happ = happPackage ?: AppRepository.findHapp(this, apps)
         pairTitle.setText(R.string.pair_done_title)
+        if (vpnHook.enabled) {
+            pairSubtitle.setText(R.string.vpn_pair_done)
+            pairForm.visibility = View.GONE
+            btnPairMain.setText(R.string.vpn_btn_connect)
+            return
+        }
+        val happ = happPackage ?: AppRepository.findHapp(this, apps)
         pairSubtitle.text = if (happ != null) getString(R.string.pair_done_subtitle, getString(R.string.app_name))
         else getString(R.string.pair_done_no_happ)
         pairForm.visibility = View.GONE
@@ -1726,6 +1755,11 @@ class MainActivity : Activity() {
     private fun onPairMainClicked() {
         if (!pairDone) {
             startPairing()
+            return
+        }
+        if (vpnHook.enabled) {
+            showPage(Page.HOME, true)
+            vpnHook.connect(session)
             return
         }
         val happ = happPackage ?: AppRepository.findHapp(this, apps)
@@ -1750,7 +1784,9 @@ class MainActivity : Activity() {
         if (happPackage == null) happPackage = AppRepository.findHapp(this, apps)
         val has = happPackage != null
         btnOpenHapp.visibility = if (has) View.VISIBLE else View.GONE
-        btnInstallHapp.visibility = if (has) View.GONE else View.VISIBLE
+        // со встроенным VPN (Android 7+) Happ не предлагаем ставить — только «Открыть Happ», если он уже есть
+        val builtIn = ::vpnHook.isInitialized && vpnHook.enabled
+        btnInstallHapp.visibility = if (has || builtIn) View.GONE else View.VISIBLE
         if (has && !downloading) helpStatus.visibility = View.GONE
     }
 

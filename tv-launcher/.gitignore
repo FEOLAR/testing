@@ -4,3 +4,6 @@ app/build/
 local.properties
 *.iml
 .idea/
+# встроенный VPN: скачивается в CI (vpn/fetch-deps.sh)
+app/libs/
+app/vpn-assets/
