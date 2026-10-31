@@ -5,10 +5,12 @@ import org.json.JSONObject
 
 /** Параметры сборки конфига ядра. */
 class CoreOptions(
-    /** Есть geoip.dat с тегом RU (в APK или скачан) — тогда добавляем правило geoip:ru → напрямую. */
+    /** geoip.dat (только RU) лежит на диске — тогда правила geoip:ru работают; иначе geoip-записи выкидываются. */
     val geoipRu: Boolean,
     val mtu: Int = 1500,
     val logLevel: String = "warning",
+    /** Профиль маршрутизации Happ (assets/routing/happ-routing.json); по умолчанию — встроенный запасной. */
+    val profile: RoutingProfile = RuRouting.DEFAULT,
 )
 
 /**
@@ -61,6 +63,18 @@ object RuRouting {
         "208.78.164.0/22", "103.10.124.0/23", "103.28.54.0/23", "192.69.96.0/22", "190.217.32.0/22",
         "205.196.6.0/24", "45.121.184.0/22",
     )
+
+    /** Запасной профиль, если assets/routing/happ-routing.json не прочитался. */
+    val DEFAULT = RoutingProfile(
+        name = "builtin", globalProxy = true,
+        remoteDnsType = "DoH", remoteDnsDomain = "https://cloudflare-dns.com/dns-query", remoteDnsIp = "1.1.1.1",
+        domesticDnsType = "DoU", domesticDnsDomain = "", domesticDnsIp = DOMESTIC_DNS,
+        dnsHosts = emptyMap(),
+        directSites = DIRECT_DOMAINS, directIp = listOf("geoip:ru") + DIRECT_IP,
+        proxySites = PROXY_DOMAINS, proxyIp = emptyList(),
+        blockSites = emptyList(), blockIp = emptyList(),
+        domainStrategy = "IPIfNonMatch", routeOrder = listOf("block", "proxy", "direct"),
+    )
 }
 
 /** Собирает JSON-конфиг Xray: вход tun (fd от VpnService), выход VLESS из ссылки, DNS и правила. */
@@ -76,7 +90,7 @@ object XrayConfigBuilder {
     fun buildJson(link: VlessLink, opt: CoreOptions): JSONObject {
         val root = JSONObject()
         root.put("log", JSONObject().put("loglevel", opt.logLevel))
-        root.put("dns", dns(link))
+        root.put("dns", dns(link, opt))
         root.put("inbounds", JSONArray().put(tunInbound(opt)))
         root.put(
             "outbounds", JSONArray()
@@ -114,20 +128,41 @@ object XrayConfigBuilder {
                 .put("routeOnly", false)
         )
 
-    private fun dns(link: VlessLink): JSONObject {
-        val domestic = JSONArray()
-        RuRouting.DIRECT_DOMAINS.forEach { domestic.put(it) }
+    /** Домены: без geosite:/ext: (своей geosite-базы с категориями нет). */
+    fun sites(list: List<String>): List<String> =
+        list.filter { e -> val l = e.lowercase(); !l.startsWith("geosite:") && !l.startsWith("ext:") }
+
+    /** IP: geoip:ru — только если файл есть; другие geoip-коды в компактной базе отсутствуют. */
+    fun ips(list: List<String>, geoipRu: Boolean): List<String> = list.filter { e ->
+        val l = e.lowercase()
+        when {
+            l.startsWith("geoip:") -> geoipRu && l == "geoip:ru"
+            l.startsWith("ext:") -> false
+            else -> true
+        }
+    }
+
+    private fun dns(link: VlessLink, opt: CoreOptions): JSONObject {
+        val p = opt.profile
+        val domestic = arr(sites(p.directSites).filter { it !in p.proxySites })
         // адрес сервера-доменом резолвим российским DNS напрямую (иначе — петля через сам VPN)
         if (!isIp(link.address)) domestic.put("full:" + link.address)
         val servers = JSONArray()
-        servers.put(
-            JSONObject().put("address", RuRouting.DOMESTIC_DNS).put("domains", domestic).put("skipFallback", true)
-        )
-        RuRouting.REMOTE_DNS.forEach { servers.put(it) }
-        return JSONObject().put("servers", servers).put("queryStrategy", "UseIPv4")
+        servers.put(JSONObject().put("address", p.domesticDnsAddress()).put("domains", domestic).put("skipFallback", true))
+        // удалённый DNS (DoH Cloudflare по IP) — через VPN; запасной — обычный 1.1.1.1
+        servers.put(p.remoteDnsAddress())
+        if (p.remoteDnsAddress() != "1.1.1.1") servers.put("1.1.1.1")
+        val dns = JSONObject().put("servers", servers).put("queryStrategy", "UseIPv4")
+        if (p.dnsHosts.isNotEmpty()) {
+            val h = JSONObject()
+            p.dnsHosts.forEach { (k, v) -> h.put(k, v) }
+            dns.put("hosts", h)
+        }
+        return dns
     }
 
     private fun routing(link: VlessLink, opt: CoreOptions): JSONObject {
+        val p = opt.profile
         val rules = JSONArray()
         // DNS-запросы телевизора — в DNS-модуль Xray
         rules.put(rule().put("inboundTag", JSONArray().put(TAG_TUN)).put("port", "53").put("outboundTag", TAG_DNS))
@@ -135,16 +170,25 @@ object XrayConfigBuilder {
         if (!isIp(link.address)) {
             rules.put(rule().put("domain", JSONArray().put("full:" + link.address)).put("outboundTag", TAG_DIRECT))
         }
-        rules.put(rule().put("domain", arr(RuRouting.PROXY_DOMAINS)).put("outboundTag", TAG_PROXY))
-        rules.put(rule().put("domain", arr(RuRouting.DIRECT_DOMAINS)).put("outboundTag", TAG_DIRECT))
-        val directIp = ArrayList<String>()
-        if (opt.geoipRu) directIp.add("geoip:ru")
-        directIp.addAll(RuRouting.DIRECT_IP)
-        rules.put(rule().put("ip", arr(directIp)).put("outboundTag", TAG_DIRECT))
+        // российский DNS всегда напрямую
+        val domesticIp = p.domesticDnsIp.takeIf { isIp(it) }
+        if (domesticIp != null) rules.put(rule().put("ip", JSONArray().put("$domesticIp/32")).put("outboundTag", TAG_DIRECT))
+        // RouteOrder профиля (по умолчанию block-proxy-direct)
+        for (group in p.routeOrder) {
+            val (domains, ipList, tag) = when (group) {
+                "block" -> Triple(p.blockSites, p.blockIp, TAG_BLOCK)
+                "proxy" -> Triple(p.proxySites, p.proxyIp, TAG_PROXY)
+                else -> Triple(p.directSites, p.directIp, TAG_DIRECT)
+            }
+            val d = sites(domains)
+            if (d.isNotEmpty()) rules.put(rule().put("domain", arr(d)).put("outboundTag", tag))
+            val i = ips(ipList, opt.geoipRu)
+            if (i.isNotEmpty()) rules.put(rule().put("ip", arr(i)).put("outboundTag", tag))
+        }
         // QUIC через VPN не нужен (Vision его не пропускает) — сразу отказ, приложения перейдут на TCP
         rules.put(rule().put("network", "udp").put("port", "443").put("outboundTag", TAG_BLOCK))
-        rules.put(rule().put("network", "tcp,udp").put("outboundTag", TAG_PROXY))
-        return JSONObject().put("domainStrategy", "IPIfNonMatch").put("rules", rules)
+        rules.put(rule().put("network", "tcp,udp").put("outboundTag", if (p.globalProxy) TAG_PROXY else TAG_DIRECT))
+        return JSONObject().put("domainStrategy", p.domainStrategy).put("rules", rules)
     }
 
     fun outbound(link: VlessLink): JSONObject {

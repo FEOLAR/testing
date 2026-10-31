@@ -33,4 +33,5 @@
     <string name="vpn_servers_failed">Не удалось загрузить список серверов</string>
     <string name="vpn_servers_reserve">Резервные</string>
     <string name="vpn_servers_retry">Обновить список</string>
+    <string name="vpn_set_adblock">Блокировать рекламу и трекеры (тест)</string>
 </resources>

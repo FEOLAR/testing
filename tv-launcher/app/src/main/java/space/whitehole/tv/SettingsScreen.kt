@@ -48,6 +48,7 @@ class SettingsScreen(private val a: MainActivity, val page: View) {
             }
         }
         a.addKidsSettingRow(this)
+        space.whitehole.tv.vpn.VpnSettingsRows.add(this, a) // встроенный VPN
         if (!a.isDefaultHome()) {
             add("home", a.getString(R.string.set_make_home), "") { a.openHomeSettings() }
         }

@@ -118,6 +118,7 @@ class WhiteHoleVpnService : VpnService() {
                 false
             }
             XrayCore.init(this)
+            val profile = RoutingStore.load(this, VpnFiles.adblock(this))
             Log.i(TAG, "connect: links=${sub.links.size} geoip=$geo server='${req.server}'")
             for (round in 0..1) {
                 val entries = ServerCatalog.build(sub.links)
@@ -128,13 +129,13 @@ class WhiteHoleVpnService : VpnService() {
                 }
                 for (a in plan) {
                     if (gen.get() != g) return
-                    var cfg = XrayConfigBuilder.build(a.link, CoreOptions(geoipRu = geo, mtu = MTU))
+                    var cfg = XrayConfigBuilder.build(a.link, CoreOptions(geoipRu = geo, mtu = MTU, profile = profile))
                     var delay = XrayCore.test(cfg)
                     if (delay < 0 && geo && XrayCore.lastTestError.contains("geo", ignoreCase = true)) {
                         // база geoip не открылась — никогда не срываем подключение из-за неё: без geoip-правил
                         Log.w(TAG, "geoip unusable, continue without geoip rules")
                         geo = false
-                        cfg = XrayConfigBuilder.build(a.link, CoreOptions(geoipRu = false, mtu = MTU))
+                        cfg = XrayConfigBuilder.build(a.link, CoreOptions(geoipRu = false, mtu = MTU, profile = profile))
                         delay = XrayCore.test(cfg)
                     }
                     Log.i(TAG, "test ${a.link}: $delay ms")

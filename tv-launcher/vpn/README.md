@@ -62,24 +62,30 @@ TCP+Vision → XHTTP → (для «Авто» — первая страна) →
 - Адрес «⚡ Авто» с несколькими IP через запятую: Remnawave сам выбирает один случайный при каждой выдаче
   (`resolveRandomizedValue`), в ссылке всегда один адрес.
 
-### Маршрутизация v1 (упрощённо относительно профиля Happ `infra/happ-routing.json`)
+### Маршрутизация — как в профиле Happ
 
-1. DNS телевизора (порт 53) → DNS-модуль Xray: российские домены — `77.88.8.8` напрямую, остальное — `1.1.1.1`/`8.8.8.8` через VPN; только IPv4.
-2. Локальные сети — напрямую (и вообще не заворачиваются в tun: adb по Wi-Fi, Chromecast, DLNA работают).
-3. YouTube / Google / Telegram — **всегда через VPN** (правило раньше «напрямую», как `RouteOrder: block-proxy-direct`).
-4. `.ru .su .рф .дети` + ~80 крупных российских сервисов на других доменах (Яндекс, VK, банки, Ozon/WB, кино, Steam) — напрямую.
-5. `geoip:ru` (компактная geoip.dat, только RU) + сети Valve — напрямую.
-6. UDP/443 (QUIC) — отказ, приложения сразу переходят на TCP. Остальное — через VPN.
+Правила берутся из `app/src/main/assets/routing/happ-routing.json` — это копия `infra/happ-routing.json`
+(тот же профиль, что панель отдаёт Happ). **Поменять правила = скопировать новый файл** и собрать APK.
+`RoutingProfile.kt` разбирает формат Happ, `XrayConfigBuilder` превращает его в правила Xray:
 
-geoip.dat/geosite.dat кладутся в assets при сборке (`fetch-deps.sh`, с `/miniapp/geoip.dat`); если в APK их нет —
-geoip.dat скачивается при первом подключении (не чаще раза в час при ошибке). Без неё правило `geoip:ru` просто не добавляется.
-`geoip:private` не используется: в компактной базе его нет, локальные сети заданы списком подсетей.
+- `RouteOrder` (по умолчанию `block-proxy-direct`): BlockSites/BlockIp → ProxySites/ProxyIp → DirectSites/DirectIp;
+  `GlobalProxy: true` — всё остальное через VPN; `DomainStrategy` (IPIfNonMatch) — как в профиле.
+- DNS: российский (`DomesticDNSIP`, 77.88.8.8, UDP) — для DirectSites, напрямую; удалённый — DoH Cloudflare
+  `https://1.1.1.1/dns-query` через VPN (из `RemoteDNSType/RemoteDNSIP`); только IPv4; `DnsHosts` → hosts.
+- Сверх профиля (нужно для ТВ): DNS-запросы из tun → DNS-модуль Xray; локальные сети напрямую и вне tun
+  (adb по Wi-Fi, Chromecast); UDP/443 (QUIC) — отказ, чтобы приложения сразу шли по TCP.
+- `geoip:ru` — только если `geoip.dat` реально лежит на диске (копируется из APK в `files/vpn/geo/` до запуска ядра);
+  иначе geoip-записи выкидываются, остальное работает. `geosite:*`/`ext:*` пропускаются (такой базы нет).
+- Тест «Блокировать рекламу и трекеры» (Настройки, по умолчанию выключено): добавляет BlockSites из
+  `assets/routing/happ-routing-adblock.json` (копия `infra/happ-routing-adblock.json`). Переключение переподключает VPN.
+- Если файл профиля не прочитался — запасной встроенный список (`RuRouting.DEFAULT`).
 
 ## Сборка
 
 Только GitHub Actions (`.github/workflows/tv-launcher.yml`): `vpn/fetch-deps.sh` → `gradle testReleaseUnitTest assembleRelease`.
-APK: универсальный (armeabi-v7a + arm64-v8a) и отдельные по процессору. Ветка `claude/tv-builtin-vpn` публикуется в
-релиз **tv-launcher-vpn-test** (`whitehole-tv-vpn.apk`), основной `tv-launcher-latest` не трогается.
+APK: универсальный (armeabi-v7a + arm64-v8a) и отдельные по процессору. Ветка `claude/whitehole-tv-launcher` публикуется в
+**tv-launcher-latest** (`whitehole-tv.apk` — универсальный, `whitehole-tv-armeabi-v7a.apk`, `whitehole-tv-arm64-v8a.apk`);
+ветка `claude/tv-builtin-vpn` — в тестовый **tv-launcher-vpn-test** (`whitehole-tv-vpn*.apk`).
 
 ## Проверка на телевизоре
 

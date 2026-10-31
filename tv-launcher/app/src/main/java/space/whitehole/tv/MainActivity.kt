@@ -1784,7 +1784,9 @@ class MainActivity : Activity() {
         if (happPackage == null) happPackage = AppRepository.findHapp(this, apps)
         val has = happPackage != null
         btnOpenHapp.visibility = if (has) View.VISIBLE else View.GONE
-        btnInstallHapp.visibility = if (has) View.GONE else View.VISIBLE
+        // со встроенным VPN (Android 7+) Happ не предлагаем ставить — только «Открыть Happ», если он уже есть
+        val builtIn = ::vpnHook.isInitialized && vpnHook.enabled
+        btnInstallHapp.visibility = if (has || builtIn) View.GONE else View.VISIBLE
         if (has && !downloading) helpStatus.visibility = View.GONE
     }
 

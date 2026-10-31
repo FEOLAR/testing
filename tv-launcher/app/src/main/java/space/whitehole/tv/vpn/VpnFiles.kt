@@ -44,6 +44,11 @@ object VpnFiles {
 
     fun setWanted(ctx: Context, on: Boolean) = write(ctx, "wanted", if (on) "1" else "0")
 
+    /** Тест: блокировать рекламу и трекеры (BlockSites из happ-routing-adblock.json). По умолчанию выключено. */
+    fun adblock(ctx: Context): Boolean = read(ctx, "adblock") == "1"
+
+    fun setAdblock(ctx: Context, on: Boolean) = write(ctx, "adblock", if (on) "1" else "0")
+
     /** Выбранный сервер: ключ ("" — Авто) и название для кнопки. */
     fun serverKey(ctx: Context): String = read(ctx, "server_key")?.trim() ?: ServerCatalog.AUTO_KEY
 
