@@ -82,7 +82,7 @@ def support() -> M:
 def howto() -> M:
     return M(inline_keyboard=[
         [btn("apple", "Happ недоступен в App Store", callback_data="appstore_help")],
-        [btn("play", "Подключить ТВ по коду", callback_data="tv_code")],
+        [btn("play", "Подключить телевизор", callback_data="tv_code")],
         [_back()],
     ])
 

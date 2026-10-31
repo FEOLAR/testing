@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="dark">
 <title>WhiteHole для телевизора</title>
-<meta name="description" content="Скачать WhiteHole для Android TV — домашний экран без рекламы и вход в подписку по коду из Telegram.">
+<meta name="description" content="Скачать WhiteHole для Android TV — домашний экран без рекламы со встроенным VPN, вход по QR-коду из Telegram.">
 <style>
 :root{--line:rgba(255,255,255,.12);--text:#f4f6fb;--muted:#9097a8}
 *{box-sizing:border-box}
@@ -20,8 +20,10 @@ a{color:inherit}
 .lead{color:#cdd2dd;margin:12px auto 0;max-width:520px}
 .btn{display:flex;align-items:center;justify-content:center;gap:10px;padding:18px;border-radius:18px;font-weight:800;font-size:19px;text-decoration:none;color:#fff;margin:22px 0 10px;
   background:linear-gradient(180deg,rgba(255,255,255,.16),rgba(255,255,255,.05));border:1px solid rgba(255,255,255,.65);box-shadow:0 0 18px rgba(255,255,255,.14)}
-.btn.sec{font-size:16px;font-weight:700;padding:14px;margin:0 0 10px;background:rgba(255,255,255,.04);border-color:var(--line);box-shadow:none}
-.btn:focus,.btn:hover{outline:3px solid #fff;outline-offset:3px;background:#fff;color:#000}
+.btn:focus,.btn:hover,.chip:focus,.chip:hover{outline:3px solid #fff;outline-offset:3px;background:#fff;color:#000}
+.abi{margin:4px 2px 0}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.chip{padding:8px 12px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.04);font-weight:600;font-size:14px;text-decoration:none}
 .h2{font-size:21px;font-weight:800;margin:28px 4px 12px}
 .card{background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.02));border:1px solid var(--line);border-radius:20px;padding:16px;margin-bottom:12px}
 .step{display:flex;gap:12px;padding:12px 0;border-top:1px solid var(--line)}
@@ -29,6 +31,7 @@ a{color:inherit}
 .num{flex:none;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;border:1px solid rgba(255,255,255,.55);font-weight:800}
 .note{color:var(--muted);font-size:14.5px;margin-top:2px}
 .addr{display:inline-block;margin-top:6px;padding:6px 10px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.05);font-weight:700;word-break:break-all}
+.small{color:var(--muted);font-size:13.5px;margin:18px 4px 0}
 .foot{text-align:center;color:var(--muted);font-size:13px;margin-top:26px}
 </style>
 </head>
@@ -37,31 +40,30 @@ a{color:inherit}
   <div class="hero">
     <div class="emblem"></div>
     <div class="brand">WhiteHole для ТВ</div>
-    <p class="lead">Домашний экран для Android TV без рекламы. Подписка подключается по коду из Telegram — без компьютера и проводов.</p>
+    <p class="lead">Домашний экран для Android TV без рекламы и со встроенным VPN. Подписка подключается по QR-коду из Telegram — без компьютера и проводов.</p>
   </div>
 
   <a class="btn" id="get" href="/miniapp/tv/whitehole-tv.apk" download>⬇ Скачать WhiteHole для ТВ</a>
-  <a class="btn sec" href="/miniapp/tv/happ.apk" download>Скачать Happ для ТВ (APK)</a>
+  $abi_html
 
-  <div class="h2">Как установить на телевизор</div>
+  <div class="h2">Как подключить телевизор</div>
   <div class="card">
-    <div class="step"><div class="num">1</div><div><b>Откройте эту страницу на телевизоре</b>
-      <div class="note">В браузере телевизора или в приложении Downloader (есть в магазине приложений) введите адрес:</div>
-      <div class="addr">77-91-95-53.sslip.io:9443/miniapp/tv</div></div></div>
-    <div class="step"><div class="num">2</div><div><b>Нажмите «Скачать WhiteHole для ТВ»</b>
-      <div class="note">Когда файл скачается — откройте его.</div></div></div>
-    <div class="step"><div class="num">3</div><div><b>Разрешите установку</b>
-      <div class="note">Android спросит, можно ли устанавливать приложения из этого источника: «Настройки» → включите разрешение для браузера (или Downloader) → «Назад» → «Установить».</div></div></div>
-    <div class="step"><div class="num">4</div><div><b>Так же установите Happ</b>
-      <div class="note">Кнопка «Скачать Happ для ТВ» выше. WhiteHole сам добавит в него подписку.</div></div></div>
-    <div class="step"><div class="num">5</div><div><b>Войдите через Telegram</b>
-      <div class="note">Откройте WhiteHole → «Войти через Telegram» → наведите камеру телефона на QR-код и нажмите в боте «Подключить ТВ». Можно ввести 6-значный код в боте командой /tv.</div></div></div>
+    <div class="step"><div class="num">1</div><div><b>Скачайте WhiteHole для ТВ</b>
+      <div class="note">Откройте эту страницу в браузере телевизора (или в приложении Downloader) по адресу</div>
+      <div class="addr">77-91-95-53.sslip.io:9443/miniapp/tv</div>
+      <div class="note">и нажмите кнопку выше. Откройте скачанный файл; если Android спросит — разрешите установку из этого источника и нажмите «Установить».</div></div></div>
+    <div class="step"><div class="num">2</div><div><b>Откройте WhiteHole и нажмите «Войти через Telegram»</b>
+      <div class="note">Отсканируйте QR-код камерой телефона и в боте нажмите «Подключить ТВ». Нет камеры — отправьте боту /tv и 6-значный код с экрана.</div></div></div>
+    <div class="step"><div class="num">3</div><div><b>Нажмите «Подключить»</b>
+      <div class="note">Телевизор попросит разрешить VPN-подключение — согласитесь. Готово.</div></div></div>
   </div>
 
   <div class="h2">Если не получается</div>
   <div class="card">
-    <div class="note" style="margin:0">Нет браузера — установите из магазина приложений телевизора «Downloader» или «Браузер». Файл не открывается — найдите его в «Загрузках» и откройте оттуда. Остались вопросы — напишите в поддержку в боте @WhiteHoleVPNbot.</div>
+    <div class="note" style="margin:0">Нет браузера — установите из магазина приложений телевизора «Downloader» или любой браузер. Файл не открывается — найдите его в «Загрузках». Есть компьютер с Windows — программа <a href="https://github.com/FEOLAR/testing/releases/download/tv-setup-latest/WhiteHoleSetup.exe">WhiteHoleSetup.exe</a> всё поставит сама. Вопросы — в поддержку в боте @WhiteHoleVPNbot.</div>
   </div>
+
+  <p class="small">Старый телевизор (Android 5–6)? Тогда понадобится Happ: <a href="/miniapp/tv/happ.apk" download>скачать Happ.apk</a>.</p>
 
   <div class="foot">© WhiteHole</div>
 </div>

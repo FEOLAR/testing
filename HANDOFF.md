@@ -12,7 +12,7 @@ VPN-сервис **WhiteHoleVPN** (раньше GalacticVPN), продажа ч�
 - `bot/app/` — бот (aiogram 3, aiohttp, SQLAlchemy async + PostgreSQL, Redis, docker compose).
 - `infra/add-node.sh` — установка новой ноды (Docker, remnanode NODE_PORT 2222, sub-proxy Caddy :9443, ufw); `bash add-node.sh test` — тест TLS.
 - `infra/bridge-nodes.sh` — мост в РФ: проверка нод, HAProxy (balance source) 443/8443, Caddy для подписки.
-- Последний архив: **whitehole-bot-v54.zip** (31.10, список устройств в /miniapp/tv/me для лаунчера, ветка `claude/tv-pairing-bot`, см. «v54»). До него v53 (30.10, вход ТВ по коду, см. «v53»). До него v52 (бот-визитка), v51 (29.10, см. раздел «v44–v51»). Ранее: v43 (25.10). До него v42 (22.10, проверка нод из России через мосты + скрытие стран упавших нод). Предыдущий v41. Профиль Happ v3 (infra/happ-routing.txt) вставлен в панель 22.10.
+- Последний архив: **whitehole-bot-v55.zip** (31.10, ТВ без Happ: тексты бота и страница /miniapp/tv, см. «v55» и «ТВ-экосистема»). До него v54 (список устройств в /miniapp/tv/me для лаунчера, ветка `claude/tv-pairing-bot`). До него v53 (30.10, вход ТВ по коду, см. «v53»). До него v52 (бот-визитка), v51 (29.10, см. раздел «v44–v51»). Ранее: v43 (25.10). До него v42 (22.10, проверка нод из России через мосты + скрытие стран упавших нод). Предыдущий v41. Профиль Happ v3 (infra/happ-routing.txt) вставлен в панель 22.10.
 
 ### Деплой бота (на сервере панели)
 ```
@@ -253,3 +253,16 @@ docker logs --tail 30 vpn-bot
 ## v54 — устройства подписки на ТВ (31.10, ветка `claude/tv-pairing-bot`)
 - `GET /miniapp/tv/me` дополнительно отдаёт `devices: [{platform, os_version, model, created_at, updated_at}]` — те же HWID-устройства из панели, что «Устройства» в мини-аппе (`panel.get_devices`), но без HWID. Лаунчер показывает их на экране «Подписка». Старые лаунчеры поле просто игнорируют.
 - Остальное без изменений; миграций БД нет.
+
+## ТВ-экосистема WhiteHole (состояние на 31.10)
+- **Лаунчер WhiteHole для Android TV** (ветка `claude/whitehole-tv-launcher`, папка `tv-launcher/`, пакет `space.whitehole.tv`): домашний экран без рекламы **со встроенным VPN** — Happ на телевизоре больше не нужен (владелец проверил, работает). Сборка — GitHub Actions при push, релиз **`tv-launcher-latest`**: `whitehole-tv.apk` (универсальный; позже могут появиться `whitehole-tv-arm64-v8a.apk` / `whitehole-tv-armeabi-v7a.apk`).
+- **Вход**: «Войти через Telegram» на ТВ → QR (`t.me/WhiteHoleVPNbot?start=tv_<код>`) или 6-значный код → в боте «Подключить ТВ» → на ТВ «Подключить». API — `/miniapp/tv/*` (см. v53/v54). Экран «Подписка» на ТВ: дни, срок, устройства (из `/miniapp/tv/me`), QR «Продлить» (`?start=src_tv_renew`), «Отвязать телевизор».
+- **Программа для Windows** «WhiteHoleSetup.exe» (релиз **`tv-setup-latest`**: https://github.com/FEOLAR/testing/releases/download/tv-setup-latest/WhiteHoleSetup.exe) — для продвинутых: сама ставит лаунчер на ТВ с ПК.
+- **Страница для клиентов**: https://77-91-95-53.sslip.io:9443/miniapp/tv — открыть в браузере телевизора (или в Downloader).
+- Happ остаётся только для старых ТВ (Android 5–6) — сноска на странице, `/miniapp/tv/happ.apk`.
+
+## v55 — ТВ без Happ (31.10, ветка `claude/tv-pairing-bot`)
+- `/miniapp/tv`: шаги «Скачай WhiteHole для ТВ» → «Открой, нажми „Войти через Telegram“, отсканируй QR телефоном» → «Нажми „Подключить“»; сноска про Happ для Android 5–6; ссылка на WhiteHoleSetup.exe в «Если не получается».
+- Сборки под процессор: `/miniapp/tv/whitehole-tv-arm64.apk` и `/miniapp/tv/whitehole-tv-armv7.apk` → локальный файл `app/web/tv/whitehole-tv-arm64-v8a.apk` / `…-armeabi-v7a.apk`, если есть, иначе 302 на релиз `tv-launcher-latest`. Ссылки на странице показываются, только если такие файлы есть в релизе (GitHub API, кэш 1 час) или лежат локально; по умолчанию — универсальный APK.
+- Бот: «Инструкция» — строка «Телевизор (Android TV) — Happ не нужен» и кнопка «Подключить телевизор»; экран телевизора — новые 3 шага + «Нет камеры? Пришли 6 цифр» + программа для ПК; после подтверждения — «Телевизор подключён — нажми „Подключить“ на экране телевизора».
+- Тест: scratchpad t_tv.py — 85 проверок (SQLite + заглушка панели). Миграций БД нет.

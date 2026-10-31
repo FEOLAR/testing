@@ -396,20 +396,77 @@ async def tv_unpair(request: web.Request) -> web.Response:
     return web.json_response({"ok": True})
 
 
+# Сборки под архитектуру процессора (меньше размер). Ссылка на сайте → файл релиза tv-launcher-latest.
+RELEASE_DL = "https://github.com/FEOLAR/testing/releases/download/tv-launcher-latest/"
+RELEASE_API = "https://api.github.com/repos/FEOLAR/testing/releases/tags/tv-launcher-latest"
+ABI_APKS = {  # путь на сайте → (файл в релизе, подпись)
+    "arm64": ("whitehole-tv-arm64-v8a.apk", "ARM64 (большинство ТВ с 2018 года)"),
+    "armv7": ("whitehole-tv-armeabi-v7a.apk", "ARMv7 (старые и бюджетные ТВ)"),
+}
+_assets_cache: tuple[float, set[str]] = (0.0, set())
+
+
+async def release_assets() -> set[str]:
+    """Имена файлов в релизе tv-launcher-latest (кэш 1 час; GitHub недоступен — пусто, без ошибок)."""
+    global _assets_cache
+    at, names = _assets_cache
+    if time.time() - at < 3600:
+        return names
+    try:
+        import aiohttp
+        async with aiohttp.ClientSession() as s:
+            async with s.get(RELEASE_API, timeout=aiohttp.ClientTimeout(total=4),
+                             headers={"Accept": "application/vnd.github+json"}) as r:
+                data = await r.json() if r.status == 200 else {}
+        names = {a.get("name", "") for a in data.get("assets", [])}
+        _assets_cache = (time.time(), names)
+    except Exception:
+        log.info("tv: github release check failed", exc_info=True)
+        _assets_cache = (time.time() - 3000, names)  # повторим через 10 минут
+    return names
+
+
+def _abi_available(key: str, assets: set[str]) -> bool:
+    name = ABI_APKS[key][0]
+    local = TV_DIR / name
+    return name in assets or (local.is_file() and local.stat().st_size > 0)
+
+
 async def tv_page(request: web.Request) -> web.Response:
-    return web.FileResponse(WEB_DIR / "tv.html", headers={"Cache-Control": "no-cache",
-                                                           "Content-Type": "text/html; charset=utf-8"})
+    from string import Template
+    assets = await release_assets()
+    links = [f'<a class="chip" href="/miniapp/tv/whitehole-tv-{key}.apk" download>{label}</a>'
+             for key, (_, label) in ABI_APKS.items() if _abi_available(key, assets)]
+    abi_html = (f'<div class="abi"><div class="note">Сборка поменьше под ваш процессор (если не уверены — '
+                f'берите кнопку выше):</div><div class="chips">{"".join(links)}</div></div>' if links else "")
+    tpl = Template((WEB_DIR / "tv.html").read_text(encoding="utf-8"))
+    return web.Response(text=tpl.safe_substitute(abi_html=abi_html), content_type="text/html",
+                        headers={"Cache-Control": "no-cache"})
 
 
-async def tv_apk(request: web.Request):
-    path = TV_DIR / "whitehole-tv.apk"
+def _apk_response(path: Path, filename: str) -> web.FileResponse | None:
     if path.is_file() and path.stat().st_size > 0:
         return web.FileResponse(path, headers={
             "Content-Type": "application/vnd.android.package-archive",
-            "Content-Disposition": 'attachment; filename="whitehole-tv.apk"',
+            "Content-Disposition": f'attachment; filename="{filename}"',
             "Cache-Control": "no-cache",
         })
+    return None
+
+
+async def tv_apk(request: web.Request):
+    resp = _apk_response(TV_DIR / "whitehole-tv.apk", "whitehole-tv.apk")
+    if resp:
+        return resp
     raise web.HTTPFound(APK_GITHUB)
+
+
+async def tv_apk_abi(request: web.Request):
+    name = ABI_APKS[request.match_info["abi"]][0]
+    resp = _apk_response(TV_DIR / name, name)
+    if resp:
+        return resp
+    raise web.HTTPFound(RELEASE_DL + name)
 
 
 async def happ_apk(request: web.Request):
@@ -421,6 +478,7 @@ def register(app: web.Application) -> None:
     r.add_get(PREFIX, tv_page)
     r.add_get(f"{PREFIX}/", tv_page)
     r.add_get(f"{PREFIX}/whitehole-tv.apk", tv_apk)
+    r.add_get(f"{PREFIX}/whitehole-tv-{{abi:arm64|armv7}}.apk", tv_apk_abi)
     r.add_get(f"{PREFIX}/happ.apk", happ_apk)
     r.add_post(f"{PREFIX}/pair/start", pair_start)
     r.add_get(f"{PREFIX}/pair/status", pair_status)
